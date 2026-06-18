@@ -24,24 +24,52 @@ export default function Login({ onLogin }) {
 
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", background: "#f8fafc", padding: "16px"
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "16px",
+      background: "linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)",
+      direction: "rtl",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
     }}>
+      {/* subtle pattern overlay */}
+      <div style={{
+        position: "fixed", inset: 0, pointerEvents: "none",
+        backgroundImage: "radial-gradient(circle at 20% 80%, rgba(255,255,255,0.04) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,255,255,0.04) 0%, transparent 50%)",
+      }} />
+
       <div className="login-card" style={{
-        background: "#fff", borderRadius: 16, padding: "40px 36px",
-        width: "100%", maxWidth: 380,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.10)"
+        position: "relative",
+        background: "#fff",
+        borderRadius: 20,
+        padding: "44px 40px",
+        width: "100%",
+        maxWidth: 400,
+        boxShadow: "0 24px 60px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.1)",
       }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <h1 style={{ fontSize: "1.4rem", color: "#0f172a", fontWeight: 700 }}>نظام إدارة المزرعة</h1>
-          <p style={{ color: "#64748b", fontSize: "0.85rem", marginTop: 4 }}>سجّل دخولك للمتابعة</p>
+        {/* header */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{
+            width: 60, height: 60, borderRadius: "50%",
+            background: "linear-gradient(135deg, #064e3b, #059669)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "1.6rem", margin: "0 auto 16px",
+            boxShadow: "0 6px 20px rgba(5,150,105,0.35)",
+          }}>
+            🐄
+          </div>
+          <h1 style={{ fontSize: "1.35rem", color: "#0f172a", fontWeight: 800, marginBottom: 4 }}>
+            نظام إدارة المزرعة
+          </h1>
+          <p style={{ color: "#94a3b8", fontSize: "0.83rem" }}>سجّل دخولك للمتابعة</p>
         </div>
 
         {error && (
           <div style={{
-            background: "#fee2e2", color: "#dc2626", padding: "10px 14px",
-            borderRadius: 8, fontSize: "0.88rem", marginBottom: 16,
-            border: "1px solid #fca5a5"
+            background: "#fef2f2", color: "#b91c1c", padding: "10px 14px",
+            borderRadius: 10, fontSize: "0.88rem", marginBottom: 20,
+            border: "1px solid #fecaca",
           }}>
             {error}
           </div>
@@ -70,11 +98,14 @@ export default function Login({ onLogin }) {
             type="submit"
             disabled={loading}
             style={{
-              width: "100%", marginTop: 8, padding: "11px",
-              background: loading ? "#6ee7b7" : "#059669",
-              color: "#fff", border: "none", borderRadius: 8,
-              fontSize: "0.95rem", fontWeight: 700, cursor: loading ? "default" : "pointer",
-              fontFamily: "inherit"
+              width: "100%", marginTop: 8, padding: "12px",
+              background: loading ? "#6ee7b7" : "linear-gradient(135deg, #059669, #047857)",
+              color: "#fff", border: "none", borderRadius: 10,
+              fontSize: "0.95rem", fontWeight: 700,
+              cursor: loading ? "default" : "pointer",
+              fontFamily: "inherit",
+              boxShadow: loading ? "none" : "0 4px 16px rgba(5,150,105,0.4)",
+              transition: "opacity 0.2s",
             }}
           >
             {loading ? "جاري الدخول..." : "دخول"}
