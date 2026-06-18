@@ -120,6 +120,15 @@ function daysUntil(target) {
 // ─── Protect all routes below ────────────────────────────────────────────────
 app.use("/api", auth);
 
+// ─── Transaction logger helper ───────────────────────────────────────────────
+function logTx(type, animal_id, animal_type, amount, date, description) {
+  db.query(
+    "INSERT INTO transactions_log (type, animal_id, animal_type, amount, date, description) VALUES (?,?,?,?,?,?)",
+    [type, animal_id || null, animal_type || null, amount || null, date, description || null],
+    () => {}
+  );
+}
+
 // ─── Notifications ───────────────────────────────────────────────────────────
 
 app.post("/api/notifications/dismiss", (req, res) => {
@@ -137,108 +146,81 @@ app.post("/api/notifications/dismiss", (req, res) => {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 app.get("/api/dashboard", (req, res) => {
-  const queries = {
-    capital:   "SELECT COALESCE(SUM(amount), 0) AS total FROM capital",
-    revenues:  "SELECT COALESCE(SUM(amount), 0) AS total FROM revenues",
-    expenses:  "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses",
-    salaries:  "SELECT COALESCE(SUM(amount), 0) AS total FROM salaries",
-    cows:      "SELECT id, number, insemination_date, birth_date FROM cows WHERE is_sold = 0",
-    dismissed: "SELECT cow_id, type, event_date FROM dismissed_notifications",
-  };
-
   const results = {};
-  let pending = Object.keys(queries).length;
-
-  const done = (key, val) => {
-    results[key] = val;
-    if (--pending === 0) buildResponse();
-  };
-
+  let pending = 8;
+  const done = (key, val) => { results[key] = val; if (--pending === 0) buildResponse(); };
   const fail = (err) => res.status(500).json({ error: err.message });
 
-  db.query(queries.capital, (err, r) => {
-    if (err) return fail(err);
-    done("capital", parseFloat(r[0].total));
-  });
-  db.query(queries.revenues, (err, r) => {
+  db.query("SELECT COALESCE(SUM(amount),0) AS total FROM revenues", (err, r) => {
     if (err) return fail(err);
     done("revenues", parseFloat(r[0].total));
   });
-  db.query(queries.expenses, (err, r) => {
+  db.query("SELECT COALESCE(SUM(amount),0) AS total FROM expenses", (err, r) => {
     if (err) return fail(err);
     done("expenses", parseFloat(r[0].total));
   });
-  db.query(queries.salaries, (err, r) => {
+  db.query("SELECT COALESCE(SUM(amount),0) AS total FROM salaries", (err, r) => {
     if (err) return fail(err);
     done("salaries", parseFloat(r[0].total));
   });
-  db.query(queries.cows, (err, rows) => {
+  db.query("SELECT COALESCE(SUM(amount),0) AS total FROM losses", (err, r) => {
+    if (err) return fail(err);
+    done("losses", parseFloat(r[0].total));
+  });
+  db.query("SELECT COALESCE(SUM(purchase_price),0) AS total FROM cows WHERE is_sold=0 AND is_dead=0", (err, r) => {
+    if (err) return fail(err);
+    done("cow_assets", parseFloat(r[0].total));
+  });
+  db.query("SELECT COALESCE(SUM(purchase_price),0) AS total FROM calves WHERE is_sold=0 AND is_dead=0", (err, r) => {
+    if (err) return fail(err);
+    done("calf_assets", parseFloat(r[0].total));
+  });
+  db.query("SELECT id, number, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
     if (err) return fail(err);
     done("cows", rows);
   });
-  db.query(queries.dismissed, (err, rows) => {
+  db.query("SELECT cow_id, type, event_date FROM dismissed_notifications", (err, rows) => {
     if (err) return fail(err);
     done("dismissed", rows);
   });
 
   function buildResponse() {
     const totalExpenses = results.expenses + results.salaries;
-    const profit = results.revenues - totalExpenses;
+    const assets        = results.cow_assets + results.calf_assets;
+    const profit        = results.revenues - totalExpenses - results.losses;
 
     const dismissedSet = new Set(
       results.dismissed.map((d) => `${d.cow_id}|${d.type}|${d.event_date}`)
     );
 
     const notifications = [];
-
     results.cows.forEach((cow) => {
       if (cow.insemination_date) {
-        const dryDate = addMonths(cow.insemination_date, 7);
-        const birthDate = addMonths(cow.insemination_date, 9);
-        const dryDays = daysUntil(dryDate);
-        const birthDays = daysUntil(birthDate);
-
+        const dryDate    = addMonths(cow.insemination_date, 7);
+        const birthDate  = addMonths(cow.insemination_date, 9);
+        const dryDays    = daysUntil(dryDate);
+        const birthDays  = daysUntil(birthDate);
         const dryDateStr = formatDate(dryDate);
         if (dryDays >= -7 && dryDays <= 30 && !dismissedSet.has(`${cow.id}|drying|${dryDateStr}`)) {
-          notifications.push({
-            cow_id: cow.id, type: "drying", cow_number: cow.number,
-            date: dryDateStr, days: dryDays,
-            message: `تنشيف البقرة رقم ${cow.number}`,
-          });
+          notifications.push({ cow_id: cow.id, type: "drying", cow_number: cow.number, date: dryDateStr, days: dryDays, message: `تنشيف البقرة رقم ${cow.number}` });
         }
         const birthDateStr = formatDate(birthDate);
         if (birthDays >= -7 && birthDays <= 30 && !dismissedSet.has(`${cow.id}|birth|${birthDateStr}`)) {
-          notifications.push({
-            cow_id: cow.id, type: "birth", cow_number: cow.number,
-            date: birthDateStr, days: birthDays,
-            message: `موعد ولادة البقرة رقم ${cow.number}`,
-          });
+          notifications.push({ cow_id: cow.id, type: "birth", cow_number: cow.number, date: birthDateStr, days: birthDays, message: `موعد ولادة البقرة رقم ${cow.number}` });
         }
       }
-
       if (cow.birth_date) {
-        const reInsemDate = addDays(cow.birth_date, 40);
-        const reInsemDays = daysUntil(reInsemDate);
+        const reInsemDate    = addDays(cow.birth_date, 40);
+        const reInsemDays    = daysUntil(reInsemDate);
         const reInsemDateStr = formatDate(reInsemDate);
         if (reInsemDays >= -7 && reInsemDays <= 30 && !dismissedSet.has(`${cow.id}|reinsemination|${reInsemDateStr}`)) {
-          notifications.push({
-            cow_id: cow.id, type: "reinsemination", cow_number: cow.number,
-            date: reInsemDateStr, days: reInsemDays,
-            message: `إعادة تلقيح البقرة رقم ${cow.number}`,
-          });
+          notifications.push({ cow_id: cow.id, type: "reinsemination", cow_number: cow.number, date: reInsemDateStr, days: reInsemDays, message: `إعادة تلقيح البقرة رقم ${cow.number}` });
         }
       }
     });
-
     notifications.sort((a, b) => a.days - b.days);
 
-    res.json({
-      capital: results.capital,
-      revenues: results.revenues,
-      expenses: totalExpenses,
-      profit,
-      notifications,
-    });
+    res.json({ assets, revenues: results.revenues, expenses: totalExpenses, losses: results.losses, profit, notifications });
   }
 });
 
@@ -257,6 +239,7 @@ app.post("/api/cows", (req, res) => {
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
   db.query(sql, [number, arrival_date || null, insemination_date || null, birth_date || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null], (err, result) => {
     if (err) return res.status(500).json({ error: err.message });
+    logTx("cow_purchase", result.insertId, "cow", purchase_price || 0, arrival_date || new Date().toISOString().split("T")[0], `شراء بقرة رقم ${number}`);
     res.json({ id: result.insertId, message: "تم إضافة البقرة" });
   });
 });
@@ -273,23 +256,25 @@ app.put("/api/cows/:id", (req, res) => {
 });
 
 app.post("/api/cows/:id/die", (req, res) => {
-  const { date } = req.body;
+  const { date, amount } = req.body;
   if (!date) return res.status(400).json({ error: "يرجى إدخال تاريخ الوفاة" });
 
   db.query("SELECT number, purchase_price FROM cows WHERE id=?", [req.params.id], (err, rows) => {
     if (err || rows.length === 0) return res.status(404).json({ error: "البقرة غير موجودة" });
     const { number, purchase_price } = rows[0];
-    db.query(
-      "INSERT INTO expenses (category, amount, date, notes) VALUES ('cow_death', ?, ?, ?)",
-      [purchase_price || 0, date, `وفاة بقرة رقم ${number}`],
-      (err2) => {
-        if (err2) return res.status(500).json({ error: err2.message });
-        db.query("DELETE FROM cows WHERE id=?", [req.params.id], (err3) => {
+    const lossAmount = amount !== undefined ? amount : (purchase_price || 0);
+    db.query("UPDATE cows SET is_dead=1, death_date=? WHERE id=?", [date, req.params.id], (err2) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      db.query(
+        "INSERT INTO losses (type, animal_id, animal_type, amount, date, notes) VALUES ('cow_death', ?, 'cow', ?, ?, ?)",
+        [req.params.id, lossAmount, date, `وفاة بقرة رقم ${number}`],
+        (err3) => {
           if (err3) return res.status(500).json({ error: err3.message });
-          res.json({ message: "تم تسجيل وفاة البقرة وإضافتها للخسائر" });
-        });
-      }
-    );
+          logTx("cow_death", req.params.id, "cow", lossAmount, date, `وفاة بقرة رقم ${number}`);
+          res.json({ message: "تم تسجيل وفاة البقرة" });
+        }
+      );
+    });
   });
 });
 
@@ -304,17 +289,22 @@ app.post("/api/cows/:id/sell", (req, res) => {
   const { sale_price, date } = req.body;
   if (!sale_price || !date) return res.status(400).json({ error: "يرجى إدخال السعر والتاريخ" });
 
-  db.query(
-    "INSERT INTO revenues (type, amount, date, notes) VALUES ('cow', ?, ?, 'بيع بقرة')",
-    [sale_price, date],
-    (err) => {
-      if (err) return res.status(500).json({ error: err.message });
-      db.query("DELETE FROM cows WHERE id=?", [req.params.id], (err2) => {
-        if (err2) return res.status(500).json({ error: err2.message });
-        res.json({ message: "تم بيع البقرة وإضافة الإيراد" });
-      });
-    }
-  );
+  db.query("SELECT number FROM cows WHERE id=?", [req.params.id], (err, rows) => {
+    if (err || rows.length === 0) return res.status(404).json({ error: "البقرة غير موجودة" });
+    const { number } = rows[0];
+    db.query("UPDATE cows SET is_sold=1, sale_price=?, sale_date=? WHERE id=?", [sale_price, date, req.params.id], (err2) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      db.query(
+        "INSERT INTO revenues (type, amount, date, notes) VALUES ('cow', ?, ?, ?)",
+        [sale_price, date, `بيع بقرة رقم ${number}`],
+        (err3) => {
+          if (err3) return res.status(500).json({ error: err3.message });
+          logTx("cow_sale", req.params.id, "cow", sale_price, date, `بيع بقرة رقم ${number}`);
+          res.json({ message: "تم بيع البقرة وتسجيل الإيراد" });
+        }
+      );
+    });
+  });
 });
 
 // ─── Calves ───────────────────────────────────────────────────────────────────
@@ -337,6 +327,10 @@ app.post("/api/calves", (req, res) => {
   db.query(sql, [number || null, origin, arrival_date || null, birth_date || null,
     mother_cow_id || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null], (err, result) => {
     if (err) return res.status(500).json({ error: err.message });
+    const txType = origin === "born" ? "calf_born" : "calf_purchase";
+    const txDate = birth_date || arrival_date || new Date().toISOString().split("T")[0];
+    const txDesc = origin === "born" ? `ولادة عجل${number ? ` رقم ${number}` : ""}` : `شراء عجل${number ? ` رقم ${number}` : ""}`;
+    logTx(txType, result.insertId, "calf", purchase_price || 0, txDate, txDesc);
     res.json({ id: result.insertId, message: "تم إضافة العجل" });
   });
 });
@@ -357,37 +351,44 @@ app.post("/api/calves/:id/sell", (req, res) => {
   const { sale_price, date } = req.body;
   if (!sale_price || !date) return res.status(400).json({ error: "يرجى إدخال السعر والتاريخ" });
 
-  db.query(
-    "INSERT INTO revenues (type, amount, date, notes) VALUES ('calf', ?, ?, 'بيع عجل')",
-    [sale_price, date],
-    (err) => {
-      if (err) return res.status(500).json({ error: err.message });
-      db.query("DELETE FROM calves WHERE id=?", [req.params.id], (err2) => {
-        if (err2) return res.status(500).json({ error: err2.message });
-        res.json({ message: "تم بيع العجل وإضافة الإيراد" });
-      });
-    }
-  );
+  db.query("SELECT number FROM calves WHERE id=?", [req.params.id], (err, rows) => {
+    if (err || rows.length === 0) return res.status(404).json({ error: "العجل غير موجود" });
+    const { number } = rows[0];
+    db.query("UPDATE calves SET is_sold=1, sale_price=?, sale_date=? WHERE id=?", [sale_price, date, req.params.id], (err2) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      db.query(
+        "INSERT INTO revenues (type, amount, date, notes) VALUES ('calf', ?, ?, ?)",
+        [sale_price, date, `بيع عجل رقم ${number || "غير محدد"}`],
+        (err3) => {
+          if (err3) return res.status(500).json({ error: err3.message });
+          logTx("calf_sale", req.params.id, "calf", sale_price, date, `بيع عجل رقم ${number || "غير محدد"}`);
+          res.json({ message: "تم بيع العجل وتسجيل الإيراد" });
+        }
+      );
+    });
+  });
 });
 
 app.post("/api/calves/:id/die", (req, res) => {
-  const { date } = req.body;
+  const { date, amount } = req.body;
   if (!date) return res.status(400).json({ error: "يرجى إدخال تاريخ الوفاة" });
 
   db.query("SELECT number, purchase_price FROM calves WHERE id=?", [req.params.id], (err, rows) => {
     if (err || rows.length === 0) return res.status(404).json({ error: "العجل غير موجود" });
     const { number, purchase_price } = rows[0];
-    db.query(
-      "INSERT INTO expenses (category, amount, date, notes) VALUES ('calf_death', ?, ?, ?)",
-      [purchase_price || 0, date, `وفاة عجل رقم ${number || "غير محدد"}`],
-      (err2) => {
-        if (err2) return res.status(500).json({ error: err2.message });
-        db.query("DELETE FROM calves WHERE id=?", [req.params.id], (err3) => {
+    const lossAmount = amount !== undefined ? amount : (purchase_price || 0);
+    db.query("UPDATE calves SET is_dead=1, death_date=? WHERE id=?", [date, req.params.id], (err2) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      db.query(
+        "INSERT INTO losses (type, animal_id, animal_type, amount, date, notes) VALUES ('calf_death', ?, 'calf', ?, ?, ?)",
+        [req.params.id, lossAmount, date, `وفاة عجل رقم ${number || "غير محدد"}`],
+        (err3) => {
           if (err3) return res.status(500).json({ error: err3.message });
-          res.json({ message: "تم تسجيل وفاة العجل وإضافتها للخسائر" });
-        });
-      }
-    );
+          logTx("calf_death", req.params.id, "calf", lossAmount, date, `وفاة عجل رقم ${number || "غير محدد"}`);
+          res.json({ message: "تم تسجيل وفاة العجل" });
+        }
+      );
+    });
   });
 });
 
@@ -412,6 +413,7 @@ app.post("/api/revenues", (req, res) => {
   db.query("INSERT INTO revenues (type, amount, date, notes) VALUES (?,?,?,?)",
     [type, amount, date, notes || null], (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
+      logTx(type === "milk" ? "milk_sale" : type, null, null, amount, date, notes || (type === "milk" ? "بيع حليب" : null));
       res.json({ id: result.insertId, message: "تم إضافة الإيراد" });
     });
 });
@@ -432,6 +434,13 @@ app.delete("/api/revenues/:id", (req, res) => {
   });
 });
 
+app.patch("/api/revenues/:id/hide", (req, res) => {
+  db.query("UPDATE revenues SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم تحديث حالة الإيراد" });
+  });
+});
+
 // ─── Expenses ─────────────────────────────────────────────────────────────────
 
 app.get("/api/expenses", (req, res) => {
@@ -446,6 +455,7 @@ app.post("/api/expenses", (req, res) => {
   db.query("INSERT INTO expenses (category, amount, date, notes) VALUES (?,?,?,?)",
     [category, amount, date, notes || null], (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
+      logTx("expense", null, null, amount, date, notes || category);
       res.json({ id: result.insertId, message: "تم إضافة المصروف" });
     });
 });
@@ -466,6 +476,13 @@ app.delete("/api/expenses/:id", (req, res) => {
   });
 });
 
+app.patch("/api/expenses/:id/hide", (req, res) => {
+  db.query("UPDATE expenses SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم تحديث حالة المصروف" });
+  });
+});
+
 // ─── Salaries ─────────────────────────────────────────────────────────────────
 
 app.get("/api/salaries", (req, res) => {
@@ -480,6 +497,7 @@ app.post("/api/salaries", (req, res) => {
   db.query("INSERT INTO salaries (employee_name, amount, date, notes) VALUES (?,?,?,?)",
     [employee_name, amount, date, notes || null], (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
+      logTx("salary", null, null, amount, date, `راتب ${employee_name}`);
       res.json({ id: result.insertId, message: "تم إضافة الراتب" });
     });
 });
@@ -497,6 +515,102 @@ app.delete("/api/salaries/:id", (req, res) => {
   db.query("DELETE FROM salaries WHERE id=?", [req.params.id], (err) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ message: "تم حذف الراتب" });
+  });
+});
+
+app.patch("/api/salaries/:id/hide", (req, res) => {
+  db.query("UPDATE salaries SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم تحديث حالة الراتب" });
+  });
+});
+
+// ─── Losses ───────────────────────────────────────────────────────────────────
+
+app.get("/api/losses", (req, res) => {
+  const sql = `
+    SELECT 'loss' AS source, id, type, amount, date, notes FROM losses
+    UNION ALL
+    SELECT 'expense' AS source, id, category AS type, amount, date, notes
+    FROM expenses WHERE category IN ('cow_death','calf_death')
+    ORDER BY date DESC`;
+  db.query(sql, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post("/api/losses", (req, res) => {
+  const { type, amount, date, notes } = req.body;
+  db.query("INSERT INTO losses (type, amount, date, notes) VALUES (?,?,?,?)",
+    [type, amount, date, notes || null], (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: result.insertId, message: "تم إضافة الخسارة" });
+    });
+});
+
+app.put("/api/losses/:id", (req, res) => {
+  const { type, amount, date, notes } = req.body;
+  db.query("UPDATE losses SET type=?, amount=?, date=?, notes=? WHERE id=?",
+    [type, amount, date, notes || null, req.params.id], (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: "تم تعديل الخسارة" });
+    });
+});
+
+app.delete("/api/losses/:id", (req, res) => {
+  db.query("DELETE FROM losses WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم حذف الخسارة" });
+  });
+});
+
+app.patch("/api/losses/:id/hide", (req, res) => {
+  db.query("UPDATE losses SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم تحديث حالة الخسارة" });
+  });
+});
+
+// ─── Assets ───────────────────────────────────────────────────────────────────
+
+app.get("/api/assets", (req, res) => {
+  const results = {};
+  let pending = 2;
+  const done = (key, val) => { results[key] = val; if (--pending === 0) res.json(results); };
+  const fail = (err) => res.status(500).json({ error: err.message });
+
+  db.query("SELECT id, number, purchase_price, arrival_date, insemination_date, birth_date, notes, is_hidden_asset FROM cows WHERE is_sold=0 AND is_dead=0 ORDER BY created_at DESC", (err, rows) => {
+    if (err) return fail(err);
+    done("cows", rows);
+  });
+  db.query("SELECT id, number, origin, purchase_price, arrival_date, birth_date, notes, is_hidden_asset FROM calves WHERE is_sold=0 AND is_dead=0 ORDER BY created_at DESC", (err, rows) => {
+    if (err) return fail(err);
+    done("calves", rows);
+  });
+});
+
+app.patch("/api/assets/cow/:id/hide", (req, res) => {
+  db.query("UPDATE cows SET is_hidden_asset = NOT is_hidden_asset WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم تحديث حالة البقرة" });
+  });
+});
+
+app.patch("/api/assets/calf/:id/hide", (req, res) => {
+  db.query("UPDATE calves SET is_hidden_asset = NOT is_hidden_asset WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "تم تحديث حالة العجل" });
+  });
+});
+
+// ─── Transactions Log ─────────────────────────────────────────────────────────
+
+app.get("/api/transactions", (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  db.query("SELECT * FROM transactions_log ORDER BY created_at DESC LIMIT ?", [limit], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
   });
 });
 

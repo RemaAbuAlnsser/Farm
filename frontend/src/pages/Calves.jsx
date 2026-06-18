@@ -3,7 +3,6 @@ import axios from "axios";
 import Modal from "../components/Modal";
 
 const API = "http://localhost:3001/api";
-
 const today = () => new Date().toISOString().split("T")[0];
 
 const EMPTY = {
@@ -29,14 +28,15 @@ function fmtDate(d) {
 export default function Calves() {
   const [calves, setCalves]     = useState([]);
   const [cows, setCows]         = useState([]);
-  const [modal, setModal]       = useState(null); // null | 'edit' | 'sell'
+  const [modal, setModal]       = useState(null);
   const [form, setForm]         = useState(EMPTY);
   const [editId, setEditId]     = useState(null);
   const [sellId, setSellId]     = useState(null);
   const [sellForm, setSellForm] = useState({ sale_price: "", date: today() });
   const [dieId, setDieId]       = useState(null);
   const [dieDate, setDieDate]   = useState(today());
-  const [filter, setFilter]     = useState("all");
+  const [lossAmount, setLossAmount] = useState("");
+  const [filter, setFilter]     = useState("active");
   const [loading, setLoading]   = useState(true);
 
   const load = () => {
@@ -46,15 +46,14 @@ export default function Calves() {
       axios.get(`${API}/cows`),
     ]).then(([c, cw]) => {
       setCalves(c.data);
-      setCows(cw.data);
+      setCows(cw.data.filter((c) => !c.is_sold && !c.is_dead));
       setLoading(false);
     });
   };
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setForm(EMPTY); setEditId(null); setModal("edit"); };
-
+  const openAdd  = () => { setForm(EMPTY); setEditId(null); setModal("edit"); };
   const openEdit = (calf) => {
     setForm({
       number:         calf.number || "",
@@ -69,22 +68,12 @@ export default function Calves() {
     setModal("edit");
   };
 
-  const openSell = (calf) => {
-    setSellId(calf.id);
-    setSellForm({ sale_price: "", date: today() });
-    setModal("sell");
-  };
-
-  const openDie = (calf) => {
-    setDieId(calf.id);
-    setDieDate(today());
-    setModal("die");
-  };
+  const openSell = (calf) => { setSellId(calf.id); setSellForm({ sale_price: "", date: today() }); setModal("sell"); };
+  const openDie  = (calf) => { setDieId(calf.id); setDieDate(today()); setLossAmount(calf.purchase_price || ""); setModal("die"); };
 
   const handleDie = (e) => {
     e.preventDefault();
-    axios.post(`${API}/calves/${dieId}/die`, { date: dieDate })
-      .then(() => { setModal(null); load(); });
+    axios.post(`${API}/calves/${dieId}/die`, { date: dieDate, amount: lossAmount }).then(() => { setModal(null); load(); });
   };
 
   const handleDelete = (id) => {
@@ -94,38 +83,36 @@ export default function Calves() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const req = editId
-      ? axios.put(`${API}/calves/${editId}`, form)
-      : axios.post(`${API}/calves`, form);
+    const req = editId ? axios.put(`${API}/calves/${editId}`, form) : axios.post(`${API}/calves`, form);
     req.then(() => { setModal(null); load(); });
   };
 
   const handleSell = (e) => {
     e.preventDefault();
-    axios.post(`${API}/calves/${sellId}/sell`, sellForm)
-      .then(() => { setModal(null); load(); });
+    axios.post(`${API}/calves/${sellId}/sell`, sellForm).then(() => { setModal(null); load(); });
   };
 
   const set = (k) => (e) => {
     const val = e.target.value;
     if (k === "mother_cow_id") {
       const mother = cows.find((c) => String(c.id) === String(val));
-      setForm((f) => ({
-        ...f,
-        mother_cow_id: val,
-        birth_date: mother?.birth_date || f.birth_date,
-      }));
+      setForm((f) => ({ ...f, mother_cow_id: val, birth_date: mother?.birth_date || f.birth_date }));
     } else {
       setForm((f) => ({ ...f, [k]: val }));
     }
   };
   const setSell = (k) => (e) => setSellForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const filtered = calves.filter((c) => {
-    if (filter === "born")      return c.origin === "born";
-    if (filter === "purchased") return c.origin === "purchased";
-    return true;
-  });
+  const active = calves.filter((c) => !c.is_sold && !c.is_dead);
+  const sold   = calves.filter((c) => !!c.is_sold);
+  const dead   = calves.filter((c) => !!c.is_dead);
+
+  const filtered = filter === "active" ? active
+    : filter === "sold"   ? sold
+    : filter === "dead"   ? dead
+    : filter === "born"   ? active.filter((c) => c.origin === "born")
+    : filter === "purchased" ? active.filter((c) => c.origin === "purchased")
+    : calves;
 
   return (
     <div>
@@ -136,32 +123,37 @@ export default function Calves() {
 
       <div className="summary-bar">
         <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{calves.length}</span></div>
-        <div className="s-item"><span className="s-label">مواليد</span><span className="s-val" style={{color:"#7e22ce"}}>{calves.filter(c=>c.origin==="born").length}</span></div>
-        <div className="s-item"><span className="s-label">مشتراة</span><span className="s-val" style={{color:"#c2410c"}}>{calves.filter(c=>c.origin==="purchased").length}</span></div>
+        <div className="s-item"><span className="s-label">نشطة</span><span className="s-val" style={{ color: "#1d4ed8" }}>{active.length}</span></div>
+        <div className="s-item"><span className="s-label">مواليد</span><span className="s-val" style={{ color: "#7e22ce" }}>{active.filter((c) => c.origin === "born").length}</span></div>
+        <div className="s-item"><span className="s-label">مشتراة</span><span className="s-val" style={{ color: "#c2410c" }}>{active.filter((c) => c.origin === "purchased").length}</span></div>
+        <div className="s-item"><span className="s-label">مباعة</span><span className="s-val" style={{ color: "#16a34a" }}>{sold.length}</span></div>
+        <div className="s-item"><span className="s-label">وفاة</span><span className="s-val" style={{ color: "#9d174d" }}>{dead.length}</span></div>
       </div>
 
       <div className="tabs">
-        {[["all","الكل"],["born","مواليد"],["purchased","مشتراة"]].map(([v,l]) => (
-          <button key={v} className={`tab ${filter===v?"active":""}`} onClick={() => setFilter(v)}>{l}</button>
+        {[["active","النشطة"],["born","مواليد"],["purchased","مشتراة"],["sold","المباعة"],["dead","الوفاة"],["all","الكل"]].map(([v, l]) => (
+          <button key={v} className={`tab ${filter === v ? "active" : ""}`} onClick={() => setFilter(v)}>{l}</button>
         ))}
       </div>
 
       <div className="table-container">
         {loading ? (
-          <p style={{padding:24,textAlign:"center",color:"#aaa"}}>جاري التحميل...</p>
+          <p style={{ padding: 24, textAlign: "center", color: "#aaa" }}>جاري التحميل...</p>
         ) : filtered.length === 0 ? (
-          <div className="empty-state">
-            <p>لا توجد عجول بعد</p>
-          </div>
+          <div className="empty-state"><p>لا توجد عجول في هذه الفئة</p></div>
         ) : (
           <table>
             <thead>
               <tr>
+                <th>الحالة</th>
                 <th>رقم العجل</th>
                 <th>المصدر</th>
-                <th>تاريخ الإحضار / الميلاد</th>
+                <th>التاريخ</th>
                 <th>الأم</th>
                 <th>ثمن الشراء</th>
+                {(filter === "sold" || filter === "all") && <th>ثمن البيع</th>}
+                {(filter === "sold" || filter === "all") && <th>تاريخ البيع</th>}
+                {(filter === "dead" || filter === "all") && <th>تاريخ الوفاة</th>}
                 <th>ملاحظات</th>
                 <th>الإجراءات</th>
               </tr>
@@ -169,6 +161,11 @@ export default function Calves() {
             <tbody>
               {filtered.map((calf) => (
                 <tr key={calf.id}>
+                  <td data-label="الحالة">
+                    {calf.is_dead  ? <span className="badge" style={{ background: "#fce7f3", color: "#9d174d" }}>وفاة</span>
+                    : calf.is_sold ? <span className="badge badge-sold">مباعة</span>
+                    :                <span className="badge badge-active">نشطة</span>}
+                  </td>
                   <td data-label="رقم العجل"><strong>{calf.number || "—"}</strong></td>
                   <td data-label="المصدر">
                     <span className={`badge ${calf.origin === "born" ? "badge-born" : "badge-purchased"}`}>
@@ -178,11 +175,18 @@ export default function Calves() {
                   <td data-label="التاريخ">{fmtDate(calf.birth_date || calf.arrival_date)}</td>
                   <td data-label="الأم">{calf.mother_number || "—"}</td>
                   <td data-label="ثمن الشراء">{fmt(calf.purchase_price)} ₪</td>
+                  {(filter === "sold" || filter === "all") && <td data-label="ثمن البيع">{calf.sale_price ? `${fmt(calf.sale_price)} ₪` : "—"}</td>}
+                  {(filter === "sold" || filter === "all") && <td data-label="تاريخ البيع">{fmtDate(calf.sale_date)}</td>}
+                  {(filter === "dead" || filter === "all") && <td data-label="تاريخ الوفاة">{fmtDate(calf.death_date)}</td>}
                   <td data-label="ملاحظات">{calf.notes || "—"}</td>
-                  <td data-label="الإجراءات" style={{whiteSpace:"nowrap"}}>
+                  <td data-label="الإجراءات" style={{ whiteSpace: "nowrap" }}>
                     <button className="action-btn btn-edit" onClick={() => openEdit(calf)}>تعديل</button>
-                    <button className="action-btn btn-sell" onClick={() => openSell(calf)}>بيع</button>
-                    <button className="action-btn btn-die" onClick={() => openDie(calf)}>مات</button>
+                    {!calf.is_sold && !calf.is_dead && (
+                      <>
+                        <button className="action-btn btn-sell" onClick={() => openSell(calf)}>بيع</button>
+                        <button className="action-btn btn-die"  onClick={() => openDie(calf)}>مات</button>
+                      </>
+                    )}
                     <button className="action-btn btn-delete" onClick={() => handleDelete(calf.id)}>حذف</button>
                   </td>
                 </tr>
@@ -209,7 +213,6 @@ export default function Calves() {
                 </select>
               </div>
             </div>
-
             <div className="form-row">
               <div className="form-group">
                 <label>{form.origin === "born" ? "تاريخ الميلاد" : "تاريخ الإحضار"}</label>
@@ -222,26 +225,21 @@ export default function Calves() {
                   <label>البقرة الأم</label>
                   <select value={form.mother_cow_id} onChange={set("mother_cow_id")}>
                     <option value="">— اختر —</option>
-                    {cows.map((c) => (
-                      <option key={c.id} value={c.id}>بقرة رقم {c.number}</option>
-                    ))}
+                    {cows.map((c) => <option key={c.id} value={c.id}>بقرة رقم {c.number}</option>)}
                   </select>
                 </div>
               )}
             </div>
-
             {form.origin === "purchased" && (
               <div className="form-group">
                 <label>ثمن الشراء (₪)</label>
                 <input type="number" min="0" step="0.01" value={form.purchase_price} onChange={set("purchase_price")} placeholder="0.00" />
               </div>
             )}
-
             <div className="form-group">
               <label>ملاحظات</label>
-              <textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="أي ملاحظات إضافية..." />
+              <textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="أي ملاحظات..." />
             </div>
-
             <div className="form-footer">
               <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>إلغاء</button>
               <button type="submit" className="btn btn-primary">{editId ? "حفظ التعديلات" : "إضافة"}</button>
@@ -254,13 +252,23 @@ export default function Calves() {
       {modal === "die" && (
         <Modal title="تسجيل وفاة عجل" onClose={() => setModal(null)}>
           <form onSubmit={handleDie}>
-            <p style={{marginBottom:16, color:"#555", fontSize:"0.9rem"}}>
-              سيتم إضافة ثمن الشراء للخسائر وحذف العجل من القائمة.
+            <p style={{ marginBottom: 16, color: "#555", fontSize: "0.9rem" }}>
+              سيتم تسجيل الوفاة في الخسائر وسيبقى العجل في السجل للمرجعية.
             </p>
-            <div className="form-group">
-              <label>تاريخ الوفاة *</label>
-              <input required type="date" value={dieDate} onChange={(e) => setDieDate(e.target.value)} />
+            <div className="form-row">
+              <div className="form-group">
+                <label>تاريخ الوفاة *</label>
+                <input required type="date" value={dieDate} onChange={(e) => setDieDate(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>قيمة الخسارة (₪) *</label>
+                <input required type="number" min="0" step="0.01" value={lossAmount}
+                  onChange={(e) => setLossAmount(e.target.value)} placeholder="0.00" />
+              </div>
             </div>
+            <p style={{ fontSize: "0.8rem", color: "#888", margin: "-8px 0 12px" }}>
+              الافتراضي: سعر الشراء — يمكن تعديله حسب القيمة الفعلية
+            </p>
             <div className="form-footer">
               <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>إلغاء</button>
               <button type="submit" className="btn btn-danger">تأكيد الوفاة</button>
@@ -273,14 +281,13 @@ export default function Calves() {
       {modal === "sell" && (
         <Modal title="بيع العجل" onClose={() => setModal(null)}>
           <form onSubmit={handleSell}>
-            <p style={{marginBottom:16, color:"#555", fontSize:"0.9rem"}}>
-              سيتم إضافة ثمن البيع للإيرادات وحذف العجل من القائمة.
+            <p style={{ marginBottom: 16, color: "#555", fontSize: "0.9rem" }}>
+              سيتم تسجيل البيع في الإيرادات وسيبقى العجل في السجل كمباع.
             </p>
             <div className="form-row">
               <div className="form-group">
                 <label>ثمن البيع (₪) *</label>
-                <input required type="number" min="0" step="0.01"
-                  value={sellForm.sale_price} onChange={setSell("sale_price")} placeholder="0.00" />
+                <input required type="number" min="0" step="0.01" value={sellForm.sale_price} onChange={setSell("sale_price")} placeholder="0.00" />
               </div>
               <div className="form-group">
                 <label>تاريخ البيع *</label>

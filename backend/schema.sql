@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS cows (
   birth_date DATE,
   purchase_price DECIMAL(10,2) DEFAULT 0,
   sale_price DECIMAL(10,2) DEFAULT NULL,
+  sale_date DATE DEFAULT NULL,
   is_sold TINYINT(1) DEFAULT 0,
+  is_dead TINYINT(1) DEFAULT 0,
+  death_date DATE DEFAULT NULL,
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -23,7 +26,10 @@ CREATE TABLE IF NOT EXISTS calves (
   mother_cow_id INT DEFAULT NULL,
   purchase_price DECIMAL(10,2) DEFAULT 0,
   sale_price DECIMAL(10,2) DEFAULT NULL,
+  sale_date DATE DEFAULT NULL,
   is_sold TINYINT(1) DEFAULT 0,
+  is_dead TINYINT(1) DEFAULT 0,
+  death_date DATE DEFAULT NULL,
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (mother_cow_id) REFERENCES cows(id) ON DELETE SET NULL
@@ -42,6 +48,17 @@ CREATE TABLE IF NOT EXISTS expenses (
   id INT AUTO_INCREMENT PRIMARY KEY,
   category ENUM('electricity','fuel','water','cow_feed','farm_rent','calf_feed','calf_straw','treatments','cow_death','calf_death','other') NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
+  date DATE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS losses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  type ENUM('cow_death','calf_death','abortion','theft','other') NOT NULL DEFAULT 'other',
+  animal_id INT DEFAULT NULL,
+  animal_type ENUM('cow','calf') DEFAULT NULL,
+  amount DECIMAL(10,2) NOT NULL DEFAULT 0,
   date DATE NOT NULL,
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
