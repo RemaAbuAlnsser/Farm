@@ -98,7 +98,7 @@ function CapitalSection({ items, onAdd, onEdit, onDelete }) {
         { key: "notes",   label: "ملاحظات",  render: (v) => v || "—" },
       ]}
       onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}
-      totalLabel="الإجمالي" total={total} accentColor="#1565c0"
+      totalLabel="الإجمالي" total={total} accentColor="#1d4ed8"
     />
   );
 }
@@ -118,7 +118,7 @@ function RevenuesSection({ items, onAdd, onEdit, onDelete }) {
         { key: "notes",  label: "ملاحظات",  render: (v) => v || "—" },
       ]}
       onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}
-      totalLabel="إجمالي الإيرادات" total={total} accentColor="#2e7d32"
+      totalLabel="إجمالي الإيرادات" total={total} accentColor="#16a34a"
     />
   );
 }
@@ -139,7 +139,7 @@ function ExpensesSection({ items, onAdd, onEdit, onDelete }) {
         <h2 style={{ fontSize: "1rem" }}>المصاريف</h2>
         <div className="section-header-right">
           <span style={{ fontSize: "0.85rem", color: "#555" }}>
-            إجمالي المصاريف: <strong style={{ color: "#c62828" }}>{fmt(total)} ₪</strong>
+            إجمالي المصاريف: <strong style={{ color: "#dc2626" }}>{fmt(total)} ₪</strong>
           </span>
           <button className="btn btn-primary" onClick={onAdd} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>+ إضافة</button>
         </div>
@@ -150,7 +150,7 @@ function ExpensesSection({ items, onAdd, onEdit, onDelete }) {
           {byCategory.map((c) => (
             <div key={c.value} className="s-item">
               <span className="s-label">{c.label}</span>
-              <span className="s-val" style={{ color: "#c62828", fontSize: "0.9rem" }}>{fmt(c.total)} ₪</span>
+              <span className="s-val" style={{ color: "#dc2626", fontSize: "0.9rem" }}>{fmt(c.total)} ₪</span>
             </div>
           ))}
         </div>
@@ -208,7 +208,7 @@ function SalariesSection({ items, onAdd, onEdit, onDelete }) {
         { key: "notes",         label: "ملاحظات",   render: (v) => v || "—" },
       ]}
       onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}
-      totalLabel="إجمالي الرواتب" total={total} accentColor="#f57f17"
+      totalLabel="إجمالي الرواتب" total={total} accentColor="#d97706"
     />
   );
 }
@@ -270,7 +270,7 @@ export default function Finances() {
   return (
     <div>
       <div className="page-header">
-        <h1>💰 الموردات والمصاريف</h1>
+        <h1>الموردات والمصاريف</h1>
       </div>
 
       <div className="cards-row" style={{ marginBottom: 24 }}>

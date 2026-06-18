@@ -14,45 +14,40 @@ export default function Navbar({ isOpen, onClose }) {
   return (
     <nav className={`navbar${isOpen ? " open" : ""}`}>
       <div className="navbar-logo">
-        <h2>🌾 مزرعة</h2>
+        <h2>مزرعة</h2>
         <p>نظام إدارة المزرعة</p>
       </div>
 
       <NavLink to="/" end onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-        <span className="nav-icon">🏠</span>
         الرئيسية
       </NavLink>
 
       <NavLink to="/cows" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-        <span className="nav-icon">🐄</span>
         البقر
       </NavLink>
 
       <NavLink to="/calves" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-        <span className="nav-icon">🐮</span>
         العجول
       </NavLink>
 
       <NavLink to="/finances" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-        <span className="nav-icon">💰</span>
         الموردات والمصاريف
       </NavLink>
 
       <NavLink to="/users" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-        <span className="nav-icon">👤</span>
         المسؤولين
       </NavLink>
 
-      <div style={{ marginTop: "auto", padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-        <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
+      <div style={{ marginTop: "auto", padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
+        <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>
           مرحباً، <strong style={{ color: "#fff" }}>{user?.name}</strong>
         </div>
         <button
           onClick={handleLogout}
           style={{
-            width: "100%", padding: "8px", background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8,
-            color: "rgba(255,255,255,0.7)", fontSize: "0.85rem", cursor: "pointer",
+            width: "100%", padding: "8px", background: "rgba(255,255,255,0.12)",
+            border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8,
+            color: "rgba(255,255,255,0.8)", fontSize: "0.85rem", cursor: "pointer",
             fontFamily: "inherit"
           }}
         >

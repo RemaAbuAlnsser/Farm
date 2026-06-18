@@ -108,13 +108,13 @@ export default function Cows() {
   return (
     <div>
       <div className="page-header">
-        <h1>🐄 البقر</h1>
+        <h1>البقر</h1>
         <button className="btn btn-primary" onClick={openAdd}>+ إضافة بقرة</button>
       </div>
 
       <div className="summary-bar">
         <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{cows.length}</span></div>
-        <div className="s-item"><span className="s-label">نشط</span><span className="s-val" style={{color:"#1565c0"}}>{cows.filter(c=>!c.is_sold).length}</span></div>
+        <div className="s-item"><span className="s-label">نشط</span><span className="s-val" style={{color:"#1d4ed8"}}>{cows.filter(c=>!c.is_sold).length}</span></div>
       </div>
 
       <div className="tabs">
@@ -128,7 +128,6 @@ export default function Cows() {
           <p style={{padding:24,textAlign:"center",color:"#aaa"}}>جاري التحميل...</p>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">🐄</div>
             <p>لا توجد بقر بعد</p>
           </div>
         ) : (

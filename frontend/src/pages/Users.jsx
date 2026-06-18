@@ -47,7 +47,7 @@ export default function Users() {
   return (
     <div>
       <div className="page-header">
-        <h1>👤 إدارة المسؤولين</h1>
+        <h1>إدارة المسؤولين</h1>
         <button className="btn btn-primary" onClick={openAdd}>+ إضافة مسؤول</button>
       </div>
 
@@ -91,7 +91,7 @@ export default function Users() {
           <form onSubmit={handleSubmit}>
             {error && (
               <div style={{
-                background: "#ffebee", color: "#c62828", padding: "10px 14px",
+                background: "#fee2e2", color: "#dc2626", padding: "10px 14px",
                 borderRadius: 8, fontSize: "0.88rem", marginBottom: 14
               }}>
                 {error}

@@ -67,8 +67,8 @@ export default function Dashboard() {
             onClick={() => setModal(true)}
             style={{
               position: "absolute", top: 12, left: 12,
-              background: "#e3f2fd", border: "none", borderRadius: 6,
-              padding: "4px 10px", fontSize: "0.78rem", color: "#1565c0",
+              background: "#dbeafe", border: "none", borderRadius: 6,
+              padding: "4px 10px", fontSize: "0.78rem", color: "#1d4ed8",
               cursor: "pointer", fontFamily: "inherit"
             }}
           >
@@ -92,7 +92,7 @@ export default function Dashboard() {
       </div>
 
       <div className="notifications-section">
-        <h2>🔔 الإشعارات والتنبيهات</h2>
+        <h2>الإشعارات والتنبيهات</h2>
 
         {notifications.length === 0 ? (
           <p className="no-notif">لا توجد تنبيهات خلال الـ 30 يوم القادمة</p>

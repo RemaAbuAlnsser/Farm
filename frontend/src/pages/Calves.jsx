@@ -130,14 +130,14 @@ export default function Calves() {
   return (
     <div>
       <div className="page-header">
-        <h1>🐮 العجول</h1>
+        <h1>العجول</h1>
         <button className="btn btn-primary" onClick={openAdd}>+ إضافة عجل</button>
       </div>
 
       <div className="summary-bar">
         <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{calves.length}</span></div>
-        <div className="s-item"><span className="s-label">مواليد</span><span className="s-val" style={{color:"#6a1b9a"}}>{calves.filter(c=>c.origin==="born").length}</span></div>
-        <div className="s-item"><span className="s-label">مشتراة</span><span className="s-val" style={{color:"#e65100"}}>{calves.filter(c=>c.origin==="purchased").length}</span></div>
+        <div className="s-item"><span className="s-label">مواليد</span><span className="s-val" style={{color:"#7e22ce"}}>{calves.filter(c=>c.origin==="born").length}</span></div>
+        <div className="s-item"><span className="s-label">مشتراة</span><span className="s-val" style={{color:"#c2410c"}}>{calves.filter(c=>c.origin==="purchased").length}</span></div>
       </div>
 
       <div className="tabs">
@@ -151,7 +151,6 @@ export default function Calves() {
           <p style={{padding:24,textAlign:"center",color:"#aaa"}}>جاري التحميل...</p>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">🐮</div>
             <p>لا توجد عجول بعد</p>
           </div>
         ) : (

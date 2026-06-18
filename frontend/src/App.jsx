@@ -24,7 +24,7 @@ export default function App() {
       <div className="app-layout">
         <div className="mobile-topbar">
           <button className="hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
-          <span className="mobile-title">🌾 مزرعة</span>
+          <span className="mobile-title">مزرعة</span>
         </div>
 
         {sidebarOpen && (
