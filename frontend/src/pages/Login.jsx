@@ -57,7 +57,7 @@ export default function Login({ onLogin }) {
             fontSize: "1.6rem", margin: "0 auto 16px",
             boxShadow: "0 6px 20px rgba(5,150,105,0.35)",
           }}>
-            🐄
+            م
           </div>
           <h1 style={{ fontSize: "1.35rem", color: "#0f172a", fontWeight: 800, marginBottom: 4 }}>
             نظام إدارة المزرعة

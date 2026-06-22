@@ -45,7 +45,7 @@ function labelFor(arr, val) {
 
 // ── Summary cards ─────────────────────────────────────────────────────────────
 
-function SummaryCards({ revenues, expenses, salaries, losses, assets }) {
+function SummaryCards({ revenues, expenses, salaries, losses, capital, assets }) {
   const totalExp = expenses + salaries;
   const profit   = revenues - totalExp - losses;
   return (
@@ -55,7 +55,11 @@ function SummaryCards({ revenues, expenses, salaries, losses, assets }) {
         <div className="card-value blue">{fmt(assets)} ₪</div>
       </div>
       <div className="card">
-        <div className="card-label">الإيرادات</div>
+        <div className="card-label">رأس المال</div>
+        <div className="card-value" style={{ color: "#1d4ed8" }}>{fmt(capital)} ₪</div>
+      </div>
+      <div className="card">
+        <div className="card-label">مبيعات</div>
         <div className="card-value green">{fmt(revenues)} ₪</div>
       </div>
       <div className="card">
@@ -86,7 +90,7 @@ function RevenuesTab({ items, onAdd, onEdit, onDelete, onToggleHide }) {
   return (
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
-        <h2 style={{ fontSize: "1rem" }}>الإيرادات</h2>
+        <h2 style={{ fontSize: "1rem" }}>مبيعات</h2>
         <div className="section-header-right">
           <span style={{ fontSize: "0.85rem", color: "#555" }}>
             الإجمالي: <strong style={{ color: "#16a34a" }}>{fmt(total)} ₪</strong>
@@ -100,13 +104,13 @@ function RevenuesTab({ items, onAdd, onEdit, onDelete, onToggleHide }) {
               {showHidden ? "إخفاء المخفية" : `عرض المخفية (${hiddenCount})`}
             </button>
           )}
-          <button className="btn btn-primary" onClick={onAdd} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>+ إضافة إيراد</button>
+          <button className="btn btn-primary" onClick={onAdd} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>+ إضافة مبيعات</button>
         </div>
       </div>
 
       <div className="table-container">
         {visible.length === 0 ? (
-          <div className="empty-state" style={{ padding: "28px 20px" }}><p>لا توجد إيرادات بعد</p></div>
+          <div className="empty-state" style={{ padding: "28px 20px" }}><p>لا توجد مبيعات بعد</p></div>
         ) : (
           <table>
             <thead>
@@ -167,18 +171,26 @@ function HideToggle({ count, show, onToggle }) {
   );
 }
 
-function ExpensesTab({ expenses, salaries, onAddExp, onEditExp, onDeleteExp, onToggleHideExp, onAddSal, onEditSal, onDeleteSal, onToggleHideSal }) {
-  const [sub, setSub] = useState("expenses");
-  const [showHiddenExp, setShowHiddenExp] = useState(false);
+const FIXED_EXP_CATS = EXPENSE_CATS.filter((c) => c.value !== "other");
+
+function ExpensesTab({ expenses, salaries, onEditExp, onDeleteExp, onToggleHideExp, onAddSal, onEditSal, onDeleteSal, onToggleHideSal }) {
+  const [sub, setSub]             = useState("expenses");
   const [showHiddenSal, setShowHiddenSal] = useState(false);
+  const [showOtherHidden, setShowOtherHidden] = useState(false);
 
-  const visibleExp    = showHiddenExp ? expenses : expenses.filter((i) => !i.is_hidden);
-  const hiddenExpCnt  = expenses.filter((i) => i.is_hidden).length;
-  const totalExp      = expenses.filter((i) => !i.is_hidden).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const fixedExpenses = expenses.filter((e) => e.category !== "other");
+  const otherExpenses = expenses.filter((e) => e.category === "other");
 
-  const visibleSal    = showHiddenSal ? salaries : salaries.filter((i) => !i.is_hidden);
-  const hiddenSalCnt  = salaries.filter((i) => i.is_hidden).length;
-  const totalSal      = salaries.filter((i) => !i.is_hidden).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalFixed = fixedExpenses.filter((e) => !e.is_hidden).reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalOther = otherExpenses.filter((e) => !e.is_hidden).reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalExp   = totalFixed + totalOther;
+
+  const visibleOther   = showOtherHidden ? otherExpenses : otherExpenses.filter((e) => !e.is_hidden);
+  const hiddenOtherCnt = otherExpenses.filter((e) => e.is_hidden).length;
+
+  const visibleSal   = showHiddenSal ? salaries : salaries.filter((i) => !i.is_hidden);
+  const hiddenSalCnt = salaries.filter((i) => i.is_hidden).length;
+  const totalSal     = salaries.filter((i) => !i.is_hidden).reduce((s, i) => s + Number(i.amount || 0), 0);
 
   return (
     <div>
@@ -193,23 +205,59 @@ function ExpensesTab({ expenses, salaries, onAddExp, onEditExp, onDeleteExp, onT
 
       {sub === "expenses" && (
         <div>
+          {/* Fixed categories table */}
+          <div className="table-container" style={{ marginBottom: 28 }}>
+            <table>
+              <thead>
+                <tr><th>البند</th><th>الإجمالي</th><th>الإجراءات</th></tr>
+              </thead>
+              <tbody>
+                {FIXED_EXP_CATS.map((cat) => {
+                  const catTotal = fixedExpenses
+                    .filter((e) => e.category === cat.value && !e.is_hidden)
+                    .reduce((s, e) => s + Number(e.amount || 0), 0);
+                  return (
+                    <tr key={cat.value}>
+                      <td data-label="البند"><strong>{cat.label}</strong></td>
+                      <td data-label="الإجمالي">
+                        {catTotal > 0
+                          ? <span style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(catTotal)} ₪</span>
+                          : <span style={{ color: "#94a3b8" }}>—</span>}
+                      </td>
+                      <td data-label="الإجراءات">
+                        <button
+                          className="action-btn btn-edit"
+                          onClick={() => onEditExp({ category: cat.value })}
+                        >
+                          + إضافة سجل
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Other expenses */}
           <div className="section-header" style={{ marginBottom: 12 }}>
-            <h2 style={{ fontSize: "1rem" }}>المصاريف التشغيلية</h2>
+            <h2 style={{ fontSize: "1rem" }}>مصاريف أخرى</h2>
             <div className="section-header-right">
-              <HideToggle count={hiddenExpCnt} show={showHiddenExp} onToggle={() => setShowHiddenExp((v) => !v)} />
-              <button className="btn btn-primary" onClick={onAddExp} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>+ إضافة مصروف</button>
+              <HideToggle count={hiddenOtherCnt} show={showOtherHidden} onToggle={() => setShowOtherHidden((v) => !v)} />
+              <button className="btn btn-primary" onClick={() => onEditExp({ category: "other" })} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>
+                + إضافة
+              </button>
             </div>
           </div>
           <div className="table-container">
-            {visibleExp.length === 0 ? (
-              <div className="empty-state" style={{ padding: "28px 20px" }}><p>لا توجد مصاريف بعد</p></div>
+            {visibleOther.length === 0 ? (
+              <div className="empty-state" style={{ padding: "28px 20px" }}><p>لا توجد مصاريف أخرى بعد</p></div>
             ) : (
               <table>
-                <thead><tr><th>البند</th><th>المبلغ</th><th>التاريخ</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
+                <thead><tr><th>المبلغ</th><th>التاريخ</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
                 <tbody>
-                  {visibleExp.map((e) => (
+                  {visibleOther.map((e) => (
                     <tr key={e.id} style={e.is_hidden ? { opacity: 0.45, background: "#f8fafc" } : {}}>
-                      <td data-label="البند">{labelFor(EXPENSE_CATS, e.category)}</td>
                       <td data-label="المبلغ">{fmt(e.amount)} ₪</td>
                       <td data-label="التاريخ">{fmtDate(e.date)}</td>
                       <td data-label="ملاحظات">{e.notes || "—"}</td>
@@ -272,7 +320,7 @@ function LossesTab({ items, onAdd, onEdit, onDelete, onToggleHide }) {
   const [showHidden, setShowHidden] = useState(false);
 
   const newLosses    = items.filter((i) => i.source === "loss");
-  const legacyLosses = items.filter((i) => i.source === "expense");
+  const legacyLosses = [];
 
   const visibleNew   = showHidden ? newLosses : newLosses.filter((i) => !i.is_hidden);
   const hiddenCount  = newLosses.filter((i) => i.is_hidden).length;
@@ -428,6 +476,53 @@ function AssetsTab({ cows, calves, onToggleHideCow, onToggleHideCalve }) {
   );
 }
 
+// ── Capital tab ───────────────────────────────────────────────────────────────
+
+function CapitalTab({ items, onAdd, onEdit, onDelete }) {
+  const total = items.reduce((s, i) => s + Number(i.amount || 0), 0);
+
+  return (
+    <div>
+      <div className="section-header" style={{ marginBottom: 12 }}>
+        <h2 style={{ fontSize: "1rem" }}>رأس المال</h2>
+        <div className="section-header-right">
+          <span style={{ fontSize: "0.85rem", color: "#555" }}>
+            الإجمالي: <strong style={{ color: "#1d4ed8" }}>{fmt(total)} ₪</strong>
+          </span>
+          <button className="btn btn-primary" onClick={onAdd} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>
+            + إضافة
+          </button>
+        </div>
+      </div>
+
+      <div className="table-container">
+        {items.length === 0 ? (
+          <div className="empty-state" style={{ padding: "28px 20px" }}><p>لا يوجد رأس مال مسجل بعد</p></div>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>المبلغ</th><th>التاريخ</th><th>ملاحظات</th><th>الإجراءات</th></tr>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.id}>
+                  <td data-label="المبلغ"><strong style={{ color: "#1d4ed8" }}>{fmt(c.amount)} ₪</strong></td>
+                  <td data-label="التاريخ">{fmtDate(c.date)}</td>
+                  <td data-label="ملاحظات">{c.notes || "—"}</td>
+                  <td data-label="الإجراءات" style={{ whiteSpace: "nowrap" }}>
+                    <button className="action-btn btn-edit" onClick={() => onEdit(c)}>تعديل</button>
+                    <button className="action-btn btn-delete" onClick={() => onDelete(c.id)}>حذف</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Finances() {
@@ -436,16 +531,26 @@ export default function Finances() {
   const [expenses, setExpenses] = useState([]);
   const [salaries, setSalaries] = useState([]);
   const [losses, setLosses]     = useState([]);
+  const [capital, setCapital]   = useState([]);
   const [assets, setAssets]     = useState({ cows: [], calves: [] });
   const [modal, setModal]       = useState(null);
   const [form, setForm]         = useState({});
   const [editId, setEditId]     = useState(null);
+  const [fixedCat, setFixedCat] = useState(false);
+  const [errMsg, setErrMsg]     = useState(null);
+
+  const showErr = (e) => {
+    const msg = e?.response?.data?.error || "حدث خطأ، حاول مجدداً";
+    setErrMsg(msg);
+    setTimeout(() => setErrMsg(null), 4000);
+  };
 
   const load = () => {
     axios.get(`${API}/revenues`).then((r) => setRevenues(r.data));
     axios.get(`${API}/expenses`).then((r) => setExpenses(r.data.filter(e => !["cow_death","calf_death"].includes(e.category))));
     axios.get(`${API}/salaries`).then((r) => setSalaries(r.data));
     axios.get(`${API}/losses`).then((r) => setLosses(r.data));
+    axios.get(`${API}/capital`).then((r) => setCapital(r.data));
     axios.get(`${API}/assets`).then((r) => setAssets(r.data));
   };
 
@@ -455,15 +560,22 @@ export default function Finances() {
     setEditId(row?.id || null);
     setModal(type);
     if (type === "revenue") setForm(row ? { amount: row.amount, date: row.date?.split("T")[0] || today(), notes: row.notes || "" } : { amount: "", date: today(), notes: "" });
-    if (type === "expense") setForm(row ? { category: row.category, amount: row.amount, date: row.date?.split("T")[0] || today(), notes: row.notes || "" } : { category: "electricity", amount: "", date: today(), notes: "" });
+    if (type === "expense") {
+      const isFixed = row && !row.id;
+      setFixedCat(isFixed);
+      setForm(row
+        ? { category: row.category || "electricity", amount: row.amount || "", date: row.date?.split("T")[0] || today(), notes: row.notes || "" }
+        : { category: "electricity", amount: "", date: today(), notes: "" });
+    }
     if (type === "salary")  setForm(row ? { employee_name: row.employee_name, amount: row.amount, date: row.date?.split("T")[0] || today(), notes: row.notes || "" } : { employee_name: "", amount: "", date: today(), notes: "" });
     if (type === "loss")    setForm(row ? { type: row.type, amount: row.amount, date: row.date?.split("T")[0] || today(), notes: row.notes || "" } : { type: "cow_death", amount: "", date: today(), notes: "" });
+    if (type === "capital") setForm(row ? { amount: row.amount, date: row.date?.split("T")[0] || today(), notes: row.notes || "" } : { amount: "", date: today(), notes: "" });
   };
 
   const handleDelete = (type, id) => {
     if (!confirm("هل تريد حذف هذا القيد؟")) return;
-    const ep = { revenue: "revenues", expense: "expenses", salary: "salaries", loss: "losses" }[type];
-    axios.delete(`${API}/${ep}/${id}`).then(load);
+    const ep = { revenue: "revenues", expense: "expenses", salary: "salaries", loss: "losses", capital: "capital" }[type];
+    axios.delete(`${API}/${ep}/${id}`).then(load).catch(showErr);
   };
 
   const handleToggleHide = (id) => {
@@ -477,11 +589,11 @@ export default function Finances() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const epMap = { revenue: "revenues", expense: "expenses", salary: "salaries", loss: "losses" };
+    const epMap = { revenue: "revenues", expense: "expenses", salary: "salaries", loss: "losses", capital: "capital" };
     const ep    = epMap[modal];
     const data  = modal === "revenue" ? { type: "milk", ...form } : form;
     const req   = editId ? axios.put(`${API}/${ep}/${editId}`, data) : axios.post(`${API}/${ep}`, data);
-    req.then(() => { setModal(null); load(); });
+    req.then(() => { setModal(null); load(); }).catch(showErr);
   };
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -490,12 +602,14 @@ export default function Finances() {
   const totalExpenses = expenses.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalSalaries = salaries.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalLosses   = losses.reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalCapital  = capital.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalAssets   = [...assets.cows, ...assets.calves].reduce((s, c) => s + Number(c.purchase_price || 0), 0);
 
   return (
     <div>
+      {errMsg && <div className="error-toast">{errMsg}</div>}
       <div className="page-header">
-        <h1>الموردات والمصاريف</h1>
+        <h1>المبيعات والمصاريف</h1>
       </div>
 
       <SummaryCards
@@ -503,11 +617,12 @@ export default function Finances() {
         expenses={totalExpenses}
         salaries={totalSalaries}
         losses={totalLosses}
+        capital={totalCapital}
         assets={totalAssets}
       />
 
       <div className="tabs">
-        {[["revenues","الإيرادات"],["expenses","المصروفات"],["losses","الخسائر"],["assets","الموجودات"]].map(([v, l]) => (
+        {[["revenues","مبيعات"],["expenses","المصروفات"],["losses","الخسائر"],["assets","الموجودات"],["capital","رأس المال"]].map(([v, l]) => (
           <button key={v} className={`tab ${tab === v ? "active" : ""}`} onClick={() => setTab(v)}>{l}</button>
         ))}
       </div>
@@ -526,7 +641,6 @@ export default function Finances() {
         <ExpensesTab
           expenses={expenses}
           salaries={salaries}
-          onAddExp={() => openModal("expense")}
           onEditExp={(e) => openModal("expense", e)}
           onDeleteExp={(id) => handleDelete("expense", id)}
           onToggleHideExp={handleToggleHideExp}
@@ -556,9 +670,18 @@ export default function Finances() {
         />
       )}
 
+      {tab === "capital" && (
+        <CapitalTab
+          items={capital}
+          onAdd={() => openModal("capital")}
+          onEdit={(c) => openModal("capital", c)}
+          onDelete={(id) => handleDelete("capital", id)}
+        />
+      )}
+
       {/* Revenue Modal (milk only) */}
       {modal === "revenue" && (
-        <Modal title={editId ? "تعديل إيراد حليب" : "إضافة إيراد حليب"} onClose={() => setModal(null)}>
+        <Modal title={editId ? "تعديل مبيعات حليب" : "إضافة مبيعات حليب"} onClose={() => setModal(null)}>
           <form onSubmit={handleSubmit}>
             <div className="form-row">
               <div className="form-group">
@@ -584,14 +707,19 @@ export default function Finances() {
 
       {/* Expense Modal */}
       {modal === "expense" && (
-        <Modal title={editId ? "تعديل مصروف" : "إضافة مصروف"} onClose={() => setModal(null)}>
+        <Modal
+          title={editId ? "تعديل مصروف" : fixedCat ? `إضافة سجل — ${labelFor(EXPENSE_CATS, form.category)}` : "إضافة مصروف"}
+          onClose={() => setModal(null)}
+        >
           <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label>البند *</label>
-              <select required value={form.category} onChange={set("category")}>
-                {EXPENSE_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
+            {!fixedCat && (
+              <div className="form-group">
+                <label>البند *</label>
+                <select required value={form.category} onChange={set("category")}>
+                  {EXPENSE_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label>المبلغ (₪) *</label>
@@ -658,6 +786,32 @@ export default function Finances() {
               <div className="form-group">
                 <label>المبلغ (₪) *</label>
                 <input required type="number" min="0" step="0.01" value={form.amount} onChange={set("amount")} placeholder="0.00" />
+              </div>
+              <div className="form-group">
+                <label>التاريخ *</label>
+                <input required type="date" value={form.date} onChange={set("date")} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>ملاحظات</label>
+              <textarea rows={2} value={form.notes} onChange={set("notes")} />
+            </div>
+            <div className="form-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>إلغاء</button>
+              <button type="submit" className="btn btn-primary">{editId ? "حفظ" : "إضافة"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Capital Modal */}
+      {modal === "capital" && (
+        <Modal title={editId ? "تعديل رأس مال" : "إضافة رأس مال"} onClose={() => setModal(null)}>
+          <form onSubmit={handleSubmit}>
+            <div className="form-row">
+              <div className="form-group">
+                <label>المبلغ (₪) *</label>
+                <input required type="number" min="0" step="0.01" value={form.amount} onChange={set("amount")} placeholder="0.00" autoFocus />
               </div>
               <div className="form-group">
                 <label>التاريخ *</label>

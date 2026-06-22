@@ -29,7 +29,7 @@ app.post("/api/auth/login", (req, res) => {
   const { name, password } = req.body;
   if (!name || !password) return res.status(400).json({ error: "أدخل الاسم وكلمة السر" });
   db.query("SELECT * FROM users WHERE name=TRIM(?)", [name.trim()], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     if (rows.length === 0) return res.status(401).json({ error: "اسم المستخدم غير موجود" });
     const user = rows[0];
     if (!bcrypt.compareSync(password, user.password))
@@ -43,7 +43,7 @@ app.post("/api/auth/login", (req, res) => {
 
 app.get("/api/users", auth, (req, res) => {
   db.query("SELECT id, name, email, created_at FROM users ORDER BY created_at DESC", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -54,7 +54,7 @@ app.post("/api/users", auth, (req, res) => {
   const hashed = bcrypt.hashSync(password, 10);
   db.query("INSERT INTO users (name, email, password) VALUES (?,?,?)",
     [name.trim(), email?.trim() || null, hashed], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ id: result.insertId, message: "تم إضافة المسؤول" });
     });
 });
@@ -65,13 +65,13 @@ app.put("/api/users/:id", auth, (req, res) => {
     const hashed = bcrypt.hashSync(password, 10);
     db.query("UPDATE users SET name=?, email=?, password=? WHERE id=?",
       [name, email || null, hashed, req.params.id], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
+        if (err) return res.status(500).json({ error: dbErr(err) });
         res.json({ message: "تم تعديل المسؤول" });
       });
   } else {
     db.query("UPDATE users SET name=?, email=? WHERE id=?",
       [name, email || null, req.params.id], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
+        if (err) return res.status(500).json({ error: dbErr(err) });
         res.json({ message: "تم تعديل المسؤول" });
       });
   }
@@ -79,16 +79,39 @@ app.put("/api/users/:id", auth, (req, res) => {
 
 app.delete("/api/users/:id", auth, (req, res) => {
   db.query("SELECT COUNT(*) AS cnt FROM users", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     if (rows[0].cnt <= 1) return res.status(400).json({ error: "لا يمكن حذف آخر مسؤول" });
     db.query("DELETE FROM users WHERE id=?", [req.params.id], (err2) => {
-      if (err2) return res.status(500).json({ error: err2.message });
+      if (err2) return res.status(500).json({ error: dbErr(err2) });
       res.json({ message: "تم حذف المسؤول" });
     });
   });
 });
 
+// ─── MySQL error → Arabic message ────────────────────────────────────────────
+
+function dbErr(err) {
+  if (err.code === "ER_DUP_ENTRY")          return "هذا الرقم مستخدم مسبقاً، اختر رقماً مختلفاً";
+  if (err.code === "ER_NO_REFERENCED_ROW_2") return "خطأ في ربط البيانات";
+  if (err.code === "ER_ROW_IS_REFERENCED_2") return "لا يمكن الحذف، البيانات مرتبطة بسجلات أخرى";
+  if (err.code === "ER_BAD_NULL_ERROR")      return "يرجى ملء جميع الحقول المطلوبة";
+  if (err.code === "ER_DATA_TOO_LONG")       return "البيانات المدخلة طويلة جداً";
+  return "حدث خطأ في قاعدة البيانات، حاول مجدداً";
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const EXPENSE_LABELS = {
+  electricity: "كهرباء",
+  fuel:        "بنزين",
+  water:       "ماء",
+  cow_feed:    "علف بقر",
+  farm_rent:   "أجرة مزرعة",
+  calf_feed:   "علف عجول",
+  calf_straw:  "قش عجول",
+  treatments:  "علاجات",
+  other:       "مصاريف أخرى",
+};
 
 function addMonths(date, months) {
   const d = new Date(date);
@@ -121,15 +144,65 @@ function daysUntil(target) {
 app.use("/api", auth);
 
 // ─── Transaction logger helper ───────────────────────────────────────────────
-function logTx(type, animal_id, animal_type, amount, date, description) {
+function logTx(type, animal_id, animal_type, amount, date, description, user_name) {
   db.query(
-    "INSERT INTO transactions_log (type, animal_id, animal_type, amount, date, description) VALUES (?,?,?,?,?,?)",
-    [type, animal_id || null, animal_type || null, amount || null, date, description || null],
+    "INSERT INTO transactions_log (type, animal_id, animal_type, amount, date, description, user_name) VALUES (?,?,?,?,?,?,?)",
+    [type, animal_id || null, animal_type || null, amount || null, date, description || null, user_name || null],
     () => {}
   );
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
+
+function buildNotifications(dismissedRows, cowRows) {
+  const dismissedSet = new Set(dismissedRows.map((d) => `${d.cow_id}|${d.type}|${d.event_date}`));
+  const notifications = [];
+  cowRows.forEach((cow) => {
+    if (cow.insemination_date) {
+      const dryDate      = addMonths(cow.insemination_date, 7);
+      const birthDate    = addMonths(cow.insemination_date, 9);
+      const dryDays      = daysUntil(dryDate);
+      const birthDays    = daysUntil(birthDate);
+      const dryDateStr   = formatDate(dryDate);
+      const birthDateStr = formatDate(birthDate);
+      if (dryDays >= -7 && dryDays <= 30 && !dismissedSet.has(`${cow.id}|drying|${dryDateStr}`))
+        notifications.push({ cow_id: cow.id, type: "drying",  cow_number: cow.number, date: dryDateStr,   days: dryDays,   message: `تنشيف البقرة رقم ${cow.number}` });
+      if (birthDays >= -7 && birthDays <= 30 && !dismissedSet.has(`${cow.id}|birth|${birthDateStr}`))
+        notifications.push({ cow_id: cow.id, type: "birth",   cow_number: cow.number, date: birthDateStr, days: birthDays, message: `موعد ولادة البقرة رقم ${cow.number}` });
+    }
+    if (cow.birth_date) {
+      const reInsemDate    = addDays(cow.birth_date, 40);
+      const reInsemDays    = daysUntil(reInsemDate);
+      const reInsemDateStr = formatDate(reInsemDate);
+      if (reInsemDays >= -7 && reInsemDays <= 30 && !dismissedSet.has(`${cow.id}|reinsemination|${reInsemDateStr}`))
+        notifications.push({ cow_id: cow.id, type: "reinsemination", cow_number: cow.number, date: reInsemDateStr, days: reInsemDays, message: `إعادة تلقيح البقرة رقم ${cow.number}` });
+    }
+  });
+  notifications.sort((a, b) => a.days - b.days);
+  return notifications;
+}
+
+function fetchNotifications(res, callback) {
+  let dismissed, cows, pending = 2;
+  const fail = (err) => res.status(500).json({ error: dbErr(err) });
+  const done = (key, val) => {
+    if (key === "dismissed") dismissed = val;
+    if (key === "cows") cows = val;
+    if (--pending === 0) callback(buildNotifications(dismissed, cows));
+  };
+  db.query("SELECT cow_id, type, event_date FROM dismissed_notifications", (err, rows) => {
+    if (err) return fail(err);
+    done("dismissed", rows);
+  });
+  db.query("SELECT id, number, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
+    if (err) return fail(err);
+    done("cows", rows);
+  });
+}
+
+app.get("/api/notifications", (req, res) => {
+  fetchNotifications(res, (notifications) => res.json(notifications));
+});
 
 app.post("/api/notifications/dismiss", (req, res) => {
   const { cow_id, type, event_date } = req.body;
@@ -137,7 +210,7 @@ app.post("/api/notifications/dismiss", (req, res) => {
     "INSERT IGNORE INTO dismissed_notifications (cow_id, type, event_date) VALUES (?,?,?)",
     [cow_id, type, event_date],
     (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ message: "تم إخفاء الإشعار" });
     }
   );
@@ -149,7 +222,7 @@ app.get("/api/dashboard", (req, res) => {
   const results = {};
   let pending = 8;
   const done = (key, val) => { results[key] = val; if (--pending === 0) buildResponse(); };
-  const fail = (err) => res.status(500).json({ error: err.message });
+  const fail = (err) => res.status(500).json({ error: dbErr(err) });
 
   db.query("SELECT COALESCE(SUM(amount),0) AS total FROM revenues", (err, r) => {
     if (err) return fail(err);
@@ -185,41 +258,10 @@ app.get("/api/dashboard", (req, res) => {
   });
 
   function buildResponse() {
-    const totalExpenses = results.expenses + results.salaries;
-    const assets        = results.cow_assets + results.calf_assets;
-    const profit        = results.revenues - totalExpenses - results.losses;
-
-    const dismissedSet = new Set(
-      results.dismissed.map((d) => `${d.cow_id}|${d.type}|${d.event_date}`)
-    );
-
-    const notifications = [];
-    results.cows.forEach((cow) => {
-      if (cow.insemination_date) {
-        const dryDate    = addMonths(cow.insemination_date, 7);
-        const birthDate  = addMonths(cow.insemination_date, 9);
-        const dryDays    = daysUntil(dryDate);
-        const birthDays  = daysUntil(birthDate);
-        const dryDateStr = formatDate(dryDate);
-        if (dryDays >= -7 && dryDays <= 30 && !dismissedSet.has(`${cow.id}|drying|${dryDateStr}`)) {
-          notifications.push({ cow_id: cow.id, type: "drying", cow_number: cow.number, date: dryDateStr, days: dryDays, message: `تنشيف البقرة رقم ${cow.number}` });
-        }
-        const birthDateStr = formatDate(birthDate);
-        if (birthDays >= -7 && birthDays <= 30 && !dismissedSet.has(`${cow.id}|birth|${birthDateStr}`)) {
-          notifications.push({ cow_id: cow.id, type: "birth", cow_number: cow.number, date: birthDateStr, days: birthDays, message: `موعد ولادة البقرة رقم ${cow.number}` });
-        }
-      }
-      if (cow.birth_date) {
-        const reInsemDate    = addDays(cow.birth_date, 40);
-        const reInsemDays    = daysUntil(reInsemDate);
-        const reInsemDateStr = formatDate(reInsemDate);
-        if (reInsemDays >= -7 && reInsemDays <= 30 && !dismissedSet.has(`${cow.id}|reinsemination|${reInsemDateStr}`)) {
-          notifications.push({ cow_id: cow.id, type: "reinsemination", cow_number: cow.number, date: reInsemDateStr, days: reInsemDays, message: `إعادة تلقيح البقرة رقم ${cow.number}` });
-        }
-      }
-    });
-    notifications.sort((a, b) => a.days - b.days);
-
+    const totalExpenses   = results.expenses + results.salaries;
+    const assets          = results.cow_assets + results.calf_assets;
+    const profit          = results.revenues - totalExpenses - results.losses;
+    const notifications   = buildNotifications(results.dismissed, results.cows);
     res.json({ assets, revenues: results.revenues, expenses: totalExpenses, losses: results.losses, profit, notifications });
   }
 });
@@ -228,7 +270,7 @@ app.get("/api/dashboard", (req, res) => {
 
 app.get("/api/cows", (req, res) => {
   db.query("SELECT * FROM cows ORDER BY created_at DESC", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -238,8 +280,8 @@ app.post("/api/cows", (req, res) => {
   const sql = `INSERT INTO cows (number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
   db.query(sql, [number, arrival_date || null, insemination_date || null, birth_date || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    logTx("cow_purchase", result.insertId, "cow", purchase_price || 0, arrival_date || new Date().toISOString().split("T")[0], `شراء بقرة رقم ${number}`);
+    if (err) return res.status(500).json({ error: dbErr(err) });
+    logTx("cow_purchase", result.insertId, "cow", purchase_price || 0, arrival_date || new Date().toISOString().split("T")[0], `شراء بقرة رقم ${number}`, req.user?.name);
     res.json({ id: result.insertId, message: "تم إضافة البقرة" });
   });
 });
@@ -250,7 +292,7 @@ app.put("/api/cows/:id", (req, res) => {
                purchase_price=?, sale_price=?, is_sold=?, notes=? WHERE id=?`;
   db.query(sql, [number, arrival_date || null, insemination_date || null, birth_date || null,
     purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null, req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تعديل البقرة" });
   });
 });
@@ -270,7 +312,7 @@ app.post("/api/cows/:id/die", (req, res) => {
         [req.params.id, lossAmount, date, `وفاة بقرة رقم ${number}`],
         (err3) => {
           if (err3) return res.status(500).json({ error: err3.message });
-          logTx("cow_death", req.params.id, "cow", lossAmount, date, `وفاة بقرة رقم ${number}`);
+          logTx("cow_death", req.params.id, "cow", lossAmount, date, `وفاة بقرة رقم ${number}`, req.user?.name);
           res.json({ message: "تم تسجيل وفاة البقرة" });
         }
       );
@@ -280,7 +322,7 @@ app.post("/api/cows/:id/die", (req, res) => {
 
 app.delete("/api/cows/:id", (req, res) => {
   db.query("DELETE FROM cows WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف البقرة" });
   });
 });
@@ -299,7 +341,7 @@ app.post("/api/cows/:id/sell", (req, res) => {
         [sale_price, date, `بيع بقرة رقم ${number}`],
         (err3) => {
           if (err3) return res.status(500).json({ error: err3.message });
-          logTx("cow_sale", req.params.id, "cow", sale_price, date, `بيع بقرة رقم ${number}`);
+          logTx("cow_sale", req.params.id, "cow", sale_price, date, `بيع بقرة رقم ${number}`, req.user?.name);
           res.json({ message: "تم بيع البقرة وتسجيل الإيراد" });
         }
       );
@@ -315,7 +357,7 @@ app.get("/api/calves", (req, res) => {
                LEFT JOIN cows co ON ca.mother_cow_id = co.id
                ORDER BY ca.created_at DESC`;
   db.query(sql, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -326,11 +368,11 @@ app.post("/api/calves", (req, res) => {
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   db.query(sql, [number || null, origin, arrival_date || null, birth_date || null,
     mother_cow_id || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     const txType = origin === "born" ? "calf_born" : "calf_purchase";
     const txDate = birth_date || arrival_date || new Date().toISOString().split("T")[0];
     const txDesc = origin === "born" ? `ولادة عجل${number ? ` رقم ${number}` : ""}` : `شراء عجل${number ? ` رقم ${number}` : ""}`;
-    logTx(txType, result.insertId, "calf", purchase_price || 0, txDate, txDesc);
+    logTx(txType, result.insertId, "calf", purchase_price || 0, txDate, txDesc, req.user?.name);
     res.json({ id: result.insertId, message: "تم إضافة العجل" });
   });
 });
@@ -342,7 +384,7 @@ app.put("/api/calves/:id", (req, res) => {
   db.query(sql, [number || null, origin, arrival_date || null, birth_date || null,
     mother_cow_id || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0,
     notes || null, req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تعديل العجل" });
   });
 });
@@ -361,7 +403,7 @@ app.post("/api/calves/:id/sell", (req, res) => {
         [sale_price, date, `بيع عجل رقم ${number || "غير محدد"}`],
         (err3) => {
           if (err3) return res.status(500).json({ error: err3.message });
-          logTx("calf_sale", req.params.id, "calf", sale_price, date, `بيع عجل رقم ${number || "غير محدد"}`);
+          logTx("calf_sale", req.params.id, "calf", sale_price, date, `بيع عجل رقم ${number || "غير محدد"}`, req.user?.name);
           res.json({ message: "تم بيع العجل وتسجيل الإيراد" });
         }
       );
@@ -384,7 +426,7 @@ app.post("/api/calves/:id/die", (req, res) => {
         [req.params.id, lossAmount, date, `وفاة عجل رقم ${number || "غير محدد"}`],
         (err3) => {
           if (err3) return res.status(500).json({ error: err3.message });
-          logTx("calf_death", req.params.id, "calf", lossAmount, date, `وفاة عجل رقم ${number || "غير محدد"}`);
+          logTx("calf_death", req.params.id, "calf", lossAmount, date, `وفاة عجل رقم ${number || "غير محدد"}`, req.user?.name);
           res.json({ message: "تم تسجيل وفاة العجل" });
         }
       );
@@ -394,7 +436,7 @@ app.post("/api/calves/:id/die", (req, res) => {
 
 app.delete("/api/calves/:id", (req, res) => {
   db.query("DELETE FROM calves WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف العجل" });
   });
 });
@@ -403,7 +445,7 @@ app.delete("/api/calves/:id", (req, res) => {
 
 app.get("/api/revenues", (req, res) => {
   db.query("SELECT * FROM revenues ORDER BY date DESC", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -412,8 +454,8 @@ app.post("/api/revenues", (req, res) => {
   const { type, amount, date, notes } = req.body;
   db.query("INSERT INTO revenues (type, amount, date, notes) VALUES (?,?,?,?)",
     [type, amount, date, notes || null], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      logTx(type === "milk" ? "milk_sale" : type, null, null, amount, date, notes || (type === "milk" ? "بيع حليب" : null));
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      logTx(type === "milk" ? "milk_sale" : type, null, null, amount, date, notes || (type === "milk" ? "بيع حليب" : null), req.user?.name);
       res.json({ id: result.insertId, message: "تم إضافة الإيراد" });
     });
 });
@@ -422,21 +464,21 @@ app.put("/api/revenues/:id", (req, res) => {
   const { type, amount, date, notes } = req.body;
   db.query("UPDATE revenues SET type=?, amount=?, date=?, notes=? WHERE id=?",
     [type, amount, date, notes || null, req.params.id], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ message: "تم تعديل الإيراد" });
     });
 });
 
 app.delete("/api/revenues/:id", (req, res) => {
   db.query("DELETE FROM revenues WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف الإيراد" });
   });
 });
 
 app.patch("/api/revenues/:id/hide", (req, res) => {
   db.query("UPDATE revenues SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تحديث حالة الإيراد" });
   });
 });
@@ -445,7 +487,7 @@ app.patch("/api/revenues/:id/hide", (req, res) => {
 
 app.get("/api/expenses", (req, res) => {
   db.query("SELECT * FROM expenses ORDER BY date DESC", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -454,8 +496,8 @@ app.post("/api/expenses", (req, res) => {
   const { category, amount, date, notes } = req.body;
   db.query("INSERT INTO expenses (category, amount, date, notes) VALUES (?,?,?,?)",
     [category, amount, date, notes || null], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      logTx("expense", null, null, amount, date, notes || category);
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      logTx("expense", null, null, amount, date, notes || EXPENSE_LABELS[category] || category, req.user?.name);
       res.json({ id: result.insertId, message: "تم إضافة المصروف" });
     });
 });
@@ -464,21 +506,21 @@ app.put("/api/expenses/:id", (req, res) => {
   const { category, amount, date, notes } = req.body;
   db.query("UPDATE expenses SET category=?, amount=?, date=?, notes=? WHERE id=?",
     [category, amount, date, notes || null, req.params.id], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ message: "تم تعديل المصروف" });
     });
 });
 
 app.delete("/api/expenses/:id", (req, res) => {
   db.query("DELETE FROM expenses WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف المصروف" });
   });
 });
 
 app.patch("/api/expenses/:id/hide", (req, res) => {
   db.query("UPDATE expenses SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تحديث حالة المصروف" });
   });
 });
@@ -487,7 +529,7 @@ app.patch("/api/expenses/:id/hide", (req, res) => {
 
 app.get("/api/salaries", (req, res) => {
   db.query("SELECT * FROM salaries ORDER BY date DESC", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -496,8 +538,8 @@ app.post("/api/salaries", (req, res) => {
   const { employee_name, amount, date, notes } = req.body;
   db.query("INSERT INTO salaries (employee_name, amount, date, notes) VALUES (?,?,?,?)",
     [employee_name, amount, date, notes || null], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      logTx("salary", null, null, amount, date, `راتب ${employee_name}`);
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      logTx("salary", null, null, amount, date, `راتب ${employee_name}`, req.user?.name);
       res.json({ id: result.insertId, message: "تم إضافة الراتب" });
     });
 });
@@ -506,21 +548,21 @@ app.put("/api/salaries/:id", (req, res) => {
   const { employee_name, amount, date, notes } = req.body;
   db.query("UPDATE salaries SET employee_name=?, amount=?, date=?, notes=? WHERE id=?",
     [employee_name, amount, date, notes || null, req.params.id], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ message: "تم تعديل الراتب" });
     });
 });
 
 app.delete("/api/salaries/:id", (req, res) => {
   db.query("DELETE FROM salaries WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف الراتب" });
   });
 });
 
 app.patch("/api/salaries/:id/hide", (req, res) => {
   db.query("UPDATE salaries SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تحديث حالة الراتب" });
   });
 });
@@ -535,7 +577,7 @@ app.get("/api/losses", (req, res) => {
     FROM expenses WHERE category IN ('cow_death','calf_death')
     ORDER BY date DESC`;
   db.query(sql, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -544,7 +586,7 @@ app.post("/api/losses", (req, res) => {
   const { type, amount, date, notes } = req.body;
   db.query("INSERT INTO losses (type, amount, date, notes) VALUES (?,?,?,?)",
     [type, amount, date, notes || null], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ id: result.insertId, message: "تم إضافة الخسارة" });
     });
 });
@@ -553,21 +595,21 @@ app.put("/api/losses/:id", (req, res) => {
   const { type, amount, date, notes } = req.body;
   db.query("UPDATE losses SET type=?, amount=?, date=?, notes=? WHERE id=?",
     [type, amount, date, notes || null, req.params.id], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ message: "تم تعديل الخسارة" });
     });
 });
 
 app.delete("/api/losses/:id", (req, res) => {
   db.query("DELETE FROM losses WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف الخسارة" });
   });
 });
 
 app.patch("/api/losses/:id/hide", (req, res) => {
   db.query("UPDATE losses SET is_hidden = NOT is_hidden WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تحديث حالة الخسارة" });
   });
 });
@@ -578,7 +620,7 @@ app.get("/api/assets", (req, res) => {
   const results = {};
   let pending = 2;
   const done = (key, val) => { results[key] = val; if (--pending === 0) res.json(results); };
-  const fail = (err) => res.status(500).json({ error: err.message });
+  const fail = (err) => res.status(500).json({ error: dbErr(err) });
 
   db.query("SELECT id, number, purchase_price, arrival_date, insemination_date, birth_date, notes, is_hidden_asset FROM cows WHERE is_sold=0 AND is_dead=0 ORDER BY created_at DESC", (err, rows) => {
     if (err) return fail(err);
@@ -592,14 +634,14 @@ app.get("/api/assets", (req, res) => {
 
 app.patch("/api/assets/cow/:id/hide", (req, res) => {
   db.query("UPDATE cows SET is_hidden_asset = NOT is_hidden_asset WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تحديث حالة البقرة" });
   });
 });
 
 app.patch("/api/assets/calf/:id/hide", (req, res) => {
   db.query("UPDATE calves SET is_hidden_asset = NOT is_hidden_asset WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تحديث حالة العجل" });
   });
 });
@@ -609,7 +651,7 @@ app.patch("/api/assets/calf/:id/hide", (req, res) => {
 app.get("/api/transactions", (req, res) => {
   const limit = parseInt(req.query.limit) || 50;
   db.query("SELECT * FROM transactions_log ORDER BY created_at DESC LIMIT ?", [limit], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -618,7 +660,7 @@ app.get("/api/transactions", (req, res) => {
 
 app.get("/api/capital", (req, res) => {
   db.query("SELECT * FROM capital ORDER BY date DESC", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json(rows);
   });
 });
@@ -627,7 +669,7 @@ app.post("/api/capital", (req, res) => {
   const { amount, date, notes } = req.body;
   db.query("INSERT INTO capital (amount, date, notes) VALUES (?,?,?)",
     [amount, date, notes || null], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ id: result.insertId, message: "تم إضافة رأس المال" });
     });
 });
@@ -636,14 +678,14 @@ app.put("/api/capital/:id", (req, res) => {
   const { amount, date, notes } = req.body;
   db.query("UPDATE capital SET amount=?, date=?, notes=? WHERE id=?",
     [amount, date, notes || null, req.params.id], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: dbErr(err) });
       res.json({ message: "تم تعديل رأس المال" });
     });
 });
 
 app.delete("/api/capital/:id", (req, res) => {
   db.query("DELETE FROM capital WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم حذف القيد" });
   });
 });

@@ -36,8 +36,14 @@ export default function Calves() {
   const [dieId, setDieId]       = useState(null);
   const [dieDate, setDieDate]   = useState(today());
   const [lossAmount, setLossAmount] = useState("");
-  const [filter, setFilter]     = useState("active");
   const [loading, setLoading]   = useState(true);
+  const [errMsg, setErrMsg]     = useState(null);
+
+  const showErr = (e) => {
+    const msg = e?.response?.data?.error || "حدث خطأ، حاول مجدداً";
+    setErrMsg(msg);
+    setTimeout(() => setErrMsg(null), 4000);
+  };
 
   const load = () => {
     setLoading(true);
@@ -73,23 +79,25 @@ export default function Calves() {
 
   const handleDie = (e) => {
     e.preventDefault();
-    axios.post(`${API}/calves/${dieId}/die`, { date: dieDate, amount: lossAmount }).then(() => { setModal(null); load(); });
+    axios.post(`${API}/calves/${dieId}/die`, { date: dieDate, amount: lossAmount })
+      .then(() => { setModal(null); load(); }).catch(showErr);
   };
 
   const handleDelete = (id) => {
     if (!confirm("هل تريد حذف هذا العجل؟")) return;
-    axios.delete(`${API}/calves/${id}`).then(load);
+    axios.delete(`${API}/calves/${id}`).then(load).catch(showErr);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const req = editId ? axios.put(`${API}/calves/${editId}`, form) : axios.post(`${API}/calves`, form);
-    req.then(() => { setModal(null); load(); });
+    req.then(() => { setModal(null); load(); }).catch(showErr);
   };
 
   const handleSell = (e) => {
     e.preventDefault();
-    axios.post(`${API}/calves/${sellId}/sell`, sellForm).then(() => { setModal(null); load(); });
+    axios.post(`${API}/calves/${sellId}/sell`, sellForm)
+      .then(() => { setModal(null); load(); }).catch(showErr);
   };
 
   const set = (k) => (e) => {
@@ -104,68 +112,42 @@ export default function Calves() {
   const setSell = (k) => (e) => setSellForm((f) => ({ ...f, [k]: e.target.value }));
 
   const active = calves.filter((c) => !c.is_sold && !c.is_dead);
-  const sold   = calves.filter((c) => !!c.is_sold);
-  const dead   = calves.filter((c) => !!c.is_dead);
-
-  const filtered = filter === "active" ? active
-    : filter === "sold"   ? sold
-    : filter === "dead"   ? dead
-    : filter === "born"   ? active.filter((c) => c.origin === "born")
-    : filter === "purchased" ? active.filter((c) => c.origin === "purchased")
-    : calves;
 
   return (
     <div>
+      {errMsg && <div className="error-toast">{errMsg}</div>}
       <div className="page-header">
         <h1>العجول</h1>
         <button className="btn btn-primary" onClick={openAdd}>+ إضافة عجل</button>
       </div>
 
       <div className="summary-bar">
-        <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{calves.length}</span></div>
-        <div className="s-item"><span className="s-label">نشطة</span><span className="s-val" style={{ color: "#1d4ed8" }}>{active.length}</span></div>
+        <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{active.length}</span></div>
         <div className="s-item"><span className="s-label">مواليد</span><span className="s-val" style={{ color: "#7e22ce" }}>{active.filter((c) => c.origin === "born").length}</span></div>
         <div className="s-item"><span className="s-label">مشتراة</span><span className="s-val" style={{ color: "#c2410c" }}>{active.filter((c) => c.origin === "purchased").length}</span></div>
-        <div className="s-item"><span className="s-label">مباعة</span><span className="s-val" style={{ color: "#16a34a" }}>{sold.length}</span></div>
-        <div className="s-item"><span className="s-label">وفاة</span><span className="s-val" style={{ color: "#9d174d" }}>{dead.length}</span></div>
-      </div>
-
-      <div className="tabs">
-        {[["active","النشطة"],["born","مواليد"],["purchased","مشتراة"],["sold","المباعة"],["dead","الوفاة"],["all","الكل"]].map(([v, l]) => (
-          <button key={v} className={`tab ${filter === v ? "active" : ""}`} onClick={() => setFilter(v)}>{l}</button>
-        ))}
       </div>
 
       <div className="table-container">
         {loading ? (
           <p style={{ padding: 24, textAlign: "center", color: "#aaa" }}>جاري التحميل...</p>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state"><p>لا توجد عجول في هذه الفئة</p></div>
+        ) : active.length === 0 ? (
+          <div className="empty-state"><p>لا توجد عجول</p></div>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>الحالة</th>
                 <th>رقم العجل</th>
                 <th>المصدر</th>
                 <th>التاريخ</th>
                 <th>الأم</th>
                 <th>ثمن الشراء</th>
-                {(filter === "sold" || filter === "all") && <th>ثمن البيع</th>}
-                {(filter === "sold" || filter === "all") && <th>تاريخ البيع</th>}
-                {(filter === "dead" || filter === "all") && <th>تاريخ الوفاة</th>}
                 <th>ملاحظات</th>
                 <th>الإجراءات</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((calf) => (
+              {active.map((calf) => (
                 <tr key={calf.id}>
-                  <td data-label="الحالة">
-                    {calf.is_dead  ? <span className="badge" style={{ background: "#fce7f3", color: "#9d174d" }}>وفاة</span>
-                    : calf.is_sold ? <span className="badge badge-sold">مباعة</span>
-                    :                <span className="badge badge-active">نشطة</span>}
-                  </td>
                   <td data-label="رقم العجل"><strong>{calf.number || "—"}</strong></td>
                   <td data-label="المصدر">
                     <span className={`badge ${calf.origin === "born" ? "badge-born" : "badge-purchased"}`}>
@@ -175,18 +157,11 @@ export default function Calves() {
                   <td data-label="التاريخ">{fmtDate(calf.birth_date || calf.arrival_date)}</td>
                   <td data-label="الأم">{calf.mother_number || "—"}</td>
                   <td data-label="ثمن الشراء">{fmt(calf.purchase_price)} ₪</td>
-                  {(filter === "sold" || filter === "all") && <td data-label="ثمن البيع">{calf.sale_price ? `${fmt(calf.sale_price)} ₪` : "—"}</td>}
-                  {(filter === "sold" || filter === "all") && <td data-label="تاريخ البيع">{fmtDate(calf.sale_date)}</td>}
-                  {(filter === "dead" || filter === "all") && <td data-label="تاريخ الوفاة">{fmtDate(calf.death_date)}</td>}
                   <td data-label="ملاحظات">{calf.notes || "—"}</td>
                   <td data-label="الإجراءات" style={{ whiteSpace: "nowrap" }}>
                     <button className="action-btn btn-edit" onClick={() => openEdit(calf)}>تعديل</button>
-                    {!calf.is_sold && !calf.is_dead && (
-                      <>
-                        <button className="action-btn btn-sell" onClick={() => openSell(calf)}>بيع</button>
-                        <button className="action-btn btn-die"  onClick={() => openDie(calf)}>مات</button>
-                      </>
-                    )}
+                    <button className="action-btn btn-sell" onClick={() => openSell(calf)}>بيع</button>
+                    <button className="action-btn btn-die"  onClick={() => openDie(calf)}>مات</button>
                     <button className="action-btn btn-delete" onClick={() => handleDelete(calf.id)}>حذف</button>
                   </td>
                 </tr>

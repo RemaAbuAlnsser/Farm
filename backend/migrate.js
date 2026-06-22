@@ -56,8 +56,11 @@ async function migrate() {
     amount DECIMAL(10,2) DEFAULT NULL,
     date DATE NOT NULL,
     description TEXT,
+    user_name VARCHAR(100) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`, "transactions_log table");
+
+  await run("ALTER TABLE transactions_log ADD COLUMN user_name VARCHAR(100) DEFAULT NULL", "transactions_log.user_name");
 
   db.end();
   console.log("\nMigration complete!");

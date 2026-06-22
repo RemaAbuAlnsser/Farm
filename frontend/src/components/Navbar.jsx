@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { getUser, clearSession } from "../auth";
 
-export default function Navbar({ isOpen, onClose }) {
+export default function Navbar({ isOpen, onClose, notifCount = 0 }) {
   const user = getUser();
 
   const handleLogout = () => {
@@ -22,6 +22,24 @@ export default function Navbar({ isOpen, onClose }) {
         الرئيسية
       </NavLink>
 
+      <NavLink
+        to="/notifications"
+        onClick={onClose}
+        className={({ isActive }) => "nav-link nav-link-notif" + (isActive ? " active" : "")}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+      >
+        <span>التنبيهات</span>
+        {notifCount > 0 && (
+          <span style={{
+            background: "#ef4444", color: "#fff", borderRadius: "50px",
+            padding: "2px 10px", fontSize: "0.78rem", fontWeight: 700,
+            minWidth: 24, textAlign: "center",
+          }}>
+            {notifCount}
+          </span>
+        )}
+      </NavLink>
+
       <NavLink to="/cows" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
         البقر
       </NavLink>
@@ -31,7 +49,7 @@ export default function Navbar({ isOpen, onClose }) {
       </NavLink>
 
       <NavLink to="/finances" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
-        الموردات والمصاريف
+        المبيعات والمصاريف
       </NavLink>
 
       <NavLink to="/users" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
