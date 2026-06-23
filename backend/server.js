@@ -158,6 +158,7 @@ function buildNotifications(dismissedRows, cowRows) {
   const dismissedSet = new Set(dismissedRows.map((d) => `${d.cow_id}|${d.type}|${d.event_date}`));
   const notifications = [];
   cowRows.forEach((cow) => {
+    const label = cow.notes ? `${cow.number} (${cow.notes})` : `${cow.number}`;
     if (cow.insemination_date) {
       const dryDate      = addMonths(cow.insemination_date, 7);
       const birthDate    = addMonths(cow.insemination_date, 9);
@@ -166,16 +167,16 @@ function buildNotifications(dismissedRows, cowRows) {
       const dryDateStr   = formatDate(dryDate);
       const birthDateStr = formatDate(birthDate);
       if (dryDays >= -7 && dryDays <= 30 && !dismissedSet.has(`${cow.id}|drying|${dryDateStr}`))
-        notifications.push({ cow_id: cow.id, type: "drying",  cow_number: cow.number, date: dryDateStr,   days: dryDays,   message: `تنشيف البقرة رقم ${cow.number}` });
+        notifications.push({ cow_id: cow.id, type: "drying",  cow_number: cow.number, date: dryDateStr,   days: dryDays,   message: `تنشيف البقرة رقم ${label}` });
       if (birthDays >= -7 && birthDays <= 30 && !dismissedSet.has(`${cow.id}|birth|${birthDateStr}`))
-        notifications.push({ cow_id: cow.id, type: "birth",   cow_number: cow.number, date: birthDateStr, days: birthDays, message: `موعد ولادة البقرة رقم ${cow.number}` });
+        notifications.push({ cow_id: cow.id, type: "birth",   cow_number: cow.number, date: birthDateStr, days: birthDays, message: `موعد ولادة البقرة رقم ${label}` });
     }
     if (cow.birth_date) {
       const reInsemDate    = addDays(cow.birth_date, 40);
       const reInsemDays    = daysUntil(reInsemDate);
       const reInsemDateStr = formatDate(reInsemDate);
       if (reInsemDays >= -7 && reInsemDays <= 30 && !dismissedSet.has(`${cow.id}|reinsemination|${reInsemDateStr}`))
-        notifications.push({ cow_id: cow.id, type: "reinsemination", cow_number: cow.number, date: reInsemDateStr, days: reInsemDays, message: `إعادة تلقيح البقرة رقم ${cow.number}` });
+        notifications.push({ cow_id: cow.id, type: "reinsemination", cow_number: cow.number, date: reInsemDateStr, days: reInsemDays, message: `إعادة تلقيح البقرة رقم ${label}` });
     }
   });
   notifications.sort((a, b) => a.days - b.days);
@@ -194,7 +195,7 @@ function fetchNotifications(res, callback) {
     if (err) return fail(err);
     done("dismissed", rows);
   });
-  db.query("SELECT id, number, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
+  db.query("SELECT id, number, notes, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
     if (err) return fail(err);
     done("cows", rows);
   });
@@ -248,7 +249,7 @@ app.get("/api/dashboard", (req, res) => {
     if (err) return fail(err);
     done("calf_assets", parseFloat(r[0].total));
   });
-  db.query("SELECT id, number, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
+  db.query("SELECT id, number, notes, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
     if (err) return fail(err);
     done("cows", rows);
   });

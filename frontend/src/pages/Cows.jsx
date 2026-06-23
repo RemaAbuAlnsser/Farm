@@ -35,6 +35,7 @@ export default function Cows() {
   const [dieDate, setDieDate]   = useState(today());
   const [lossAmount, setLossAmount] = useState("");
   const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState("");
   const [errMsg, setErrMsg]     = useState(null);
 
   const showErr = (e) => {
@@ -94,6 +95,13 @@ export default function Cows() {
   const setSell = (k) => (e) => setSellForm((f) => ({ ...f, [k]: e.target.value }));
 
   const active = cows.filter((c) => !c.is_sold && !c.is_dead);
+  const q      = search.trim().toLowerCase();
+  const displayed = q
+    ? active.filter((c) =>
+        String(c.number).includes(q) ||
+        (c.notes || "").toLowerCase().includes(q)
+      )
+    : active;
 
   return (
     <div>
@@ -107,11 +115,26 @@ export default function Cows() {
         <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{active.length}</span></div>
       </div>
 
+      <div style={{ marginBottom: 16 }}>
+        <input
+          type="text"
+          placeholder="بحث برقم البقرة أو الملاحظات..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            width: "100%", maxWidth: 340, padding: "9px 14px",
+            border: "1px solid #e2e8f0", borderRadius: 8,
+            fontSize: "0.9rem", fontFamily: "inherit", outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </div>
+
       <div className="table-container">
         {loading ? (
           <p style={{ padding: 24, textAlign: "center", color: "#aaa" }}>جاري التحميل...</p>
-        ) : active.length === 0 ? (
-          <div className="empty-state"><p>لا توجد بقر</p></div>
+        ) : displayed.length === 0 ? (
+          <div className="empty-state"><p>{q ? "لا توجد نتائج" : "لا توجد بقر"}</p></div>
         ) : (
           <table>
             <thead>
@@ -125,7 +148,7 @@ export default function Cows() {
               </tr>
             </thead>
             <tbody>
-              {active.map((cow) => (
+              {displayed.map((cow) => (
                 <tr key={cow.id}>
                   <td data-label="رقم البقرة"><strong>{cow.number}</strong></td>
                   <td data-label="تاريخ الإحضار">{fmtDate(cow.arrival_date)}</td>

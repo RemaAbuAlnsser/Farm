@@ -37,6 +37,7 @@ export default function Calves() {
   const [dieDate, setDieDate]   = useState(today());
   const [lossAmount, setLossAmount] = useState("");
   const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState("");
   const [errMsg, setErrMsg]     = useState(null);
 
   const showErr = (e) => {
@@ -112,6 +113,14 @@ export default function Calves() {
   const setSell = (k) => (e) => setSellForm((f) => ({ ...f, [k]: e.target.value }));
 
   const active = calves.filter((c) => !c.is_sold && !c.is_dead);
+  const q      = search.trim().toLowerCase();
+  const displayed = q
+    ? active.filter((c) =>
+        String(c.number || "").includes(q) ||
+        (c.notes || "").toLowerCase().includes(q) ||
+        (c.mother_number ? String(c.mother_number).includes(q) : false)
+      )
+    : active;
 
   return (
     <div>
@@ -127,11 +136,26 @@ export default function Calves() {
         <div className="s-item"><span className="s-label">مشتراة</span><span className="s-val" style={{ color: "#c2410c" }}>{active.filter((c) => c.origin === "purchased").length}</span></div>
       </div>
 
+      <div style={{ marginBottom: 16 }}>
+        <input
+          type="text"
+          placeholder="بحث برقم العجل أو رقم الأم أو الملاحظات..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            width: "100%", maxWidth: 360, padding: "9px 14px",
+            border: "1px solid #e2e8f0", borderRadius: 8,
+            fontSize: "0.9rem", fontFamily: "inherit", outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </div>
+
       <div className="table-container">
         {loading ? (
           <p style={{ padding: 24, textAlign: "center", color: "#aaa" }}>جاري التحميل...</p>
-        ) : active.length === 0 ? (
-          <div className="empty-state"><p>لا توجد عجول</p></div>
+        ) : displayed.length === 0 ? (
+          <div className="empty-state"><p>{q ? "لا توجد نتائج" : "لا توجد عجول"}</p></div>
         ) : (
           <table>
             <thead>
@@ -146,7 +170,7 @@ export default function Calves() {
               </tr>
             </thead>
             <tbody>
-              {active.map((calf) => (
+              {displayed.map((calf) => (
                 <tr key={calf.id}>
                   <td data-label="رقم العجل"><strong>{calf.number || "—"}</strong></td>
                   <td data-label="المصدر">
