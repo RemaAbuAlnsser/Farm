@@ -8,6 +8,7 @@ import Cows          from "./pages/Cows";
 import Calves        from "./pages/Calves";
 import Finances      from "./pages/Finances";
 import Users         from "./pages/Users";
+import Guide         from "./pages/Guide";
 import Login         from "./pages/Login";
 import { isLoggedIn } from "./auth";
 import "./App.css";
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/calves"        element={<Calves />} />
             <Route path="/finances"      element={<Finances />} />
             <Route path="/users"         element={<Users />} />
+            <Route path="/guide"         element={<Guide />} />
             <Route path="/login"         element={<Navigate to="/" />} />
           </Routes>
         </main>

@@ -56,6 +56,10 @@ export default function Navbar({ isOpen, onClose, notifCount = 0 }) {
         المسؤولين
       </NavLink>
 
+      <NavLink to="/guide" onClick={onClose} className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}>
+        دليل
+      </NavLink>
+
       <div style={{ marginTop: "auto", padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
         <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>
           مرحباً، <strong style={{ color: "#fff" }}>{user?.name}</strong>
