@@ -159,9 +159,18 @@ function buildNotifications(dismissedRows, cowRows) {
   const notifications = [];
   cowRows.forEach((cow) => {
     const label = cow.notes ? `${cow.number} (${cow.notes})` : `${cow.number}`;
-    if (cow.insemination_date) {
-      const dryDate      = addMonths(cow.insemination_date, 7);
-      const birthDate    = addMonths(cow.insemination_date, 9);
+
+    // Use actual insemination date, or estimate it from pregnancy_days if cow is pregnant
+    let effectiveInsemDate = cow.insemination_date;
+    if (!effectiveInsemDate && cow.is_pregnant && cow.pregnancy_days) {
+      const d = new Date();
+      d.setDate(d.getDate() - parseInt(cow.pregnancy_days));
+      effectiveInsemDate = formatDate(d);
+    }
+
+    if (effectiveInsemDate) {
+      const dryDate      = addMonths(effectiveInsemDate, 7);
+      const birthDate    = addMonths(effectiveInsemDate, 9);
       const dryDays      = daysUntil(dryDate);
       const birthDays    = daysUntil(birthDate);
       const dryDateStr   = formatDate(dryDate);
@@ -171,6 +180,7 @@ function buildNotifications(dismissedRows, cowRows) {
       if (birthDays >= -7 && birthDays <= 30 && !dismissedSet.has(`${cow.id}|birth|${birthDateStr}`))
         notifications.push({ cow_id: cow.id, type: "birth",   cow_number: cow.number, date: birthDateStr, days: birthDays, message: `موعد ولادة البقرة رقم ${label}` });
     }
+
     if (cow.birth_date) {
       const reInsemDate    = addDays(cow.birth_date, 40);
       const reInsemDays    = daysUntil(reInsemDate);
@@ -195,7 +205,7 @@ function fetchNotifications(res, callback) {
     if (err) return fail(err);
     done("dismissed", rows);
   });
-  db.query("SELECT id, number, notes, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
+  db.query("SELECT id, number, notes, insemination_date, birth_date, is_pregnant, pregnancy_days FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
     if (err) return fail(err);
     done("cows", rows);
   });
@@ -249,7 +259,7 @@ app.get("/api/dashboard", (req, res) => {
     if (err) return fail(err);
     done("calf_assets", parseFloat(r[0].total));
   });
-  db.query("SELECT id, number, notes, insemination_date, birth_date FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
+  db.query("SELECT id, number, notes, insemination_date, birth_date, is_pregnant, pregnancy_days FROM cows WHERE is_sold=0 AND is_dead=0", (err, rows) => {
     if (err) return fail(err);
     done("cows", rows);
   });
@@ -277,10 +287,10 @@ app.get("/api/cows", (req, res) => {
 });
 
 app.post("/api/cows", (req, res) => {
-  const { number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes } = req.body;
-  const sql = `INSERT INTO cows (number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-  db.query(sql, [number, arrival_date || null, insemination_date || null, birth_date || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null], (err, result) => {
+  const { number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes, is_pregnant, pregnancy_days } = req.body;
+  const sql = `INSERT INTO cows (number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes, is_pregnant, pregnancy_days)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.query(sql, [number, arrival_date || null, insemination_date || null, birth_date || null, purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null, is_pregnant ? 1 : 0, pregnancy_days || null], (err, result) => {
     if (err) return res.status(500).json({ error: dbErr(err) });
     logTx("cow_purchase", result.insertId, "cow", purchase_price || 0, arrival_date || new Date().toISOString().split("T")[0], `شراء بقرة رقم ${number}`, req.user?.name);
     res.json({ id: result.insertId, message: "تم إضافة البقرة" });
@@ -288,11 +298,11 @@ app.post("/api/cows", (req, res) => {
 });
 
 app.put("/api/cows/:id", (req, res) => {
-  const { number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes } = req.body;
+  const { number, arrival_date, insemination_date, birth_date, purchase_price, sale_price, is_sold, notes, is_pregnant, pregnancy_days } = req.body;
   const sql = `UPDATE cows SET number=?, arrival_date=?, insemination_date=?, birth_date=?,
-               purchase_price=?, sale_price=?, is_sold=?, notes=? WHERE id=?`;
+               purchase_price=?, sale_price=?, is_sold=?, notes=?, is_pregnant=?, pregnancy_days=? WHERE id=?`;
   db.query(sql, [number, arrival_date || null, insemination_date || null, birth_date || null,
-    purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null, req.params.id], (err) => {
+    purchase_price || 0, sale_price || null, is_sold ? 1 : 0, notes || null, is_pregnant ? 1 : 0, pregnancy_days || null, req.params.id], (err) => {
     if (err) return res.status(500).json({ error: dbErr(err) });
     res.json({ message: "تم تعديل البقرة" });
   });
@@ -619,7 +629,7 @@ app.patch("/api/losses/:id/hide", (req, res) => {
 
 app.get("/api/assets", (req, res) => {
   const results = {};
-  let pending = 2;
+  let pending = 3;
   const done = (key, val) => { results[key] = val; if (--pending === 0) res.json(results); };
   const fail = (err) => res.status(500).json({ error: dbErr(err) });
 
@@ -630,6 +640,36 @@ app.get("/api/assets", (req, res) => {
   db.query("SELECT id, number, origin, purchase_price, arrival_date, birth_date, notes, is_hidden_asset FROM calves WHERE is_sold=0 AND is_dead=0 ORDER BY created_at DESC", (err, rows) => {
     if (err) return fail(err);
     done("calves", rows);
+  });
+  db.query("SELECT * FROM custom_assets ORDER BY created_at DESC", (err, rows) => {
+    if (err) return fail(err);
+    done("custom", rows);
+  });
+});
+
+app.post("/api/custom-assets", (req, res) => {
+  const { name, value, notes } = req.body;
+  if (!name) return res.status(400).json({ error: "اسم الموجود مطلوب" });
+  db.query("INSERT INTO custom_assets (name, value, notes) VALUES (?,?,?)",
+    [name, value || 0, notes || null], (err, result) => {
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      res.json({ id: result.insertId, message: "تم الإضافة" });
+    });
+});
+
+app.put("/api/custom-assets/:id", (req, res) => {
+  const { name, value, notes } = req.body;
+  db.query("UPDATE custom_assets SET name=?, value=?, notes=? WHERE id=?",
+    [name, value || 0, notes || null, req.params.id], (err) => {
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      res.json({ message: "تم التعديل" });
+    });
+});
+
+app.delete("/api/custom-assets/:id", (req, res) => {
+  db.query("DELETE FROM custom_assets WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: dbErr(err) });
+    res.json({ message: "تم الحذف" });
   });
 });
 

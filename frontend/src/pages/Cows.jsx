@@ -12,6 +12,8 @@ const EMPTY = {
   birth_date: "",
   purchase_price: "",
   notes: "",
+  is_pregnant: false,
+  pregnancy_days: "",
 };
 
 function fmt(n) {
@@ -60,6 +62,8 @@ export default function Cows() {
       birth_date:        cow.birth_date?.split("T")[0] || "",
       purchase_price:    cow.purchase_price || "",
       notes:             cow.notes || "",
+      is_pregnant:       !!cow.is_pregnant,
+      pregnancy_days:    cow.pregnancy_days || "",
     });
     setEditId(cow.id);
     setModal("edit");
@@ -113,6 +117,7 @@ export default function Cows() {
 
       <div className="summary-bar">
         <div className="s-item"><span className="s-label">الإجمالي</span><span className="s-val">{active.length}</span></div>
+        <div className="s-item"><span className="s-label">حوامل</span><span className="s-val" style={{ color: "#9333ea" }}>{active.filter((c) => c.is_pregnant).length}</span></div>
       </div>
 
       <div style={{ marginBottom: 16 }}>
@@ -143,6 +148,7 @@ export default function Cows() {
                 <th>تاريخ الإحضار</th>
                 <th>تاريخ التلقيح</th>
                 <th>ثمن الشراء</th>
+                <th>الحمل</th>
                 <th>ملاحظات</th>
                 <th>الإجراءات</th>
               </tr>
@@ -154,6 +160,17 @@ export default function Cows() {
                   <td data-label="تاريخ الإحضار">{fmtDate(cow.arrival_date)}</td>
                   <td data-label="تاريخ التلقيح">{fmtDate(cow.insemination_date)}</td>
                   <td data-label="ثمن الشراء">{fmt(cow.purchase_price)} ₪</td>
+                  <td data-label="الحمل">
+                    {cow.is_pregnant ? (
+                      <span style={{
+                        background: "#f3e8ff", color: "#7e22ce", borderRadius: 6,
+                        padding: "2px 10px", fontSize: "0.82rem", fontWeight: 600,
+                        display: "inline-block",
+                      }}>
+                        حامل{cow.pregnancy_days ? ` — ${cow.pregnancy_days} يوم` : ""}
+                      </span>
+                    ) : "—"}
+                  </td>
                   <td data-label="ملاحظات">{cow.notes || "—"}</td>
                   <td data-label="الإجراءات" style={{ whiteSpace: "nowrap" }}>
                     <button className="action-btn btn-edit" onClick={() => openEdit(cow)}>تعديل</button>
@@ -196,7 +213,38 @@ export default function Cows() {
               <label>ثمن الشراء (₪)</label>
               <input type="number" min="0" step="0.01" value={form.purchase_price} onChange={set("purchase_price")} placeholder="0.00" />
             </div>
-            <div className="form-group">
+
+            {/* Pregnancy */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0 4px" }}>
+              <input
+                id="pregnant-check"
+                type="checkbox"
+                checked={form.is_pregnant}
+                onChange={(e) => setForm((f) => ({ ...f, is_pregnant: e.target.checked, pregnancy_days: e.target.checked ? f.pregnancy_days : "" }))}
+                style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#9333ea" }}
+              />
+              <label htmlFor="pregnant-check" style={{ cursor: "pointer", fontWeight: 600, color: "#374151", margin: 0 }}>
+                البقرة حامل
+              </label>
+            </div>
+            {form.is_pregnant && (
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label>تقدير الحمل (بالأيام)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="270"
+                  value={form.pregnancy_days}
+                  onChange={set("pregnancy_days")}
+                  placeholder="مثال: 60 (عدد الأيام منذ التلقيح)"
+                />
+                <small style={{ color: "#64748b", fontSize: "0.78rem" }}>
+                  يُستخدم لحساب مواعيد التنشيف والولادة وإعادة التلقيح تلقائياً
+                </small>
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginTop: form.is_pregnant ? 4 : 12 }}>
               <label>ملاحظات</label>
               <textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="أي ملاحظات..." />
             </div>

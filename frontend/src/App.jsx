@@ -26,7 +26,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (loggedIn) refreshNotifCount();
+    if (!loggedIn) return;
+    refreshNotifCount();
+    const interval = setInterval(refreshNotifCount, 30000);
+    return () => clearInterval(interval);
   }, [loggedIn, refreshNotifCount]);
 
   if (!loggedIn) {

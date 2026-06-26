@@ -379,98 +379,154 @@ function LossesTab({ items, onAdd, onEdit, onDelete, onToggleHide }) {
 
 // ── Assets tab ────────────────────────────────────────────────────────────────
 
-function AssetsTab({ cows, calves, onToggleHideCow, onToggleHideCalve }) {
+function AssetsTab({ cows, calves, custom, onToggleHideCow, onToggleHideCalve, onAddCustom, onEditCustom, onDeleteCustom }) {
   const [showHidden, setShowHidden] = useState(false);
+  const [subTab, setSubTab]         = useState("animals");
 
   const visibleCows   = showHidden ? cows   : cows.filter((c) => !c.is_hidden_asset);
   const visibleCalves = showHidden ? calves : calves.filter((c) => !c.is_hidden_asset);
   const hiddenCount   = cows.filter((c) => c.is_hidden_asset).length + calves.filter((c) => c.is_hidden_asset).length;
 
-  const totalCows   = visibleCows.reduce((s, c) => s + Number(c.purchase_price || 0), 0);
-  const totalCalves = visibleCalves.reduce((s, c) => s + Number(c.purchase_price || 0), 0);
-  const total       = totalCows + totalCalves;
+  const totalCows    = visibleCows.reduce((s, c) => s + Number(c.purchase_price || 0), 0);
+  const totalCalves  = visibleCalves.reduce((s, c) => s + Number(c.purchase_price || 0), 0);
+  const totalAnimals = totalCows + totalCalves;
+  const totalCustom  = custom.reduce((s, c) => s + Number(c.value || 0), 0);
+  const totalAll     = totalAnimals + totalCustom;
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-        <div style={{ padding: "14px 18px", background: "#f0fdf4", borderRadius: 10, border: "1px solid #bbf7d0", flex: 1 }}>
-          <span style={{ fontSize: "0.85rem", color: "#15803d", fontWeight: 600 }}>
-            إجمالي قيمة الموجودات: {fmt(total)} ₪
-            <span style={{ fontWeight: 400, marginRight: 12, color: "#16a34a" }}>
-              ({visibleCows.length} بقرة · {visibleCalves.length} عجل)
-            </span>
-          </span>
-          <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 4 }}>
-            يشمل الحيوانات النشطة فقط (غير المباعة وغير المتوفاة) · القيمة بناءً على ثمن الشراء
-          </p>
-        </div>
-        {hiddenCount > 0 && (
-          <button className="btn btn-ghost" style={{ marginRight: 12, padding: "7px 14px", fontSize: "0.82rem", whiteSpace: "nowrap" }}
-            onClick={() => setShowHidden((v) => !v)}>
-            {showHidden ? "إخفاء المخفية" : `عرض المخفية (${hiddenCount})`}
-          </button>
-        )}
+      {/* Summary bar */}
+      <div style={{ padding: "14px 18px", background: "#f0fdf4", borderRadius: 10, border: "1px solid #bbf7d0", marginBottom: 16 }}>
+        <span style={{ fontSize: "0.85rem", color: "#15803d", fontWeight: 600 }}>
+          إجمالي الموجودات: {fmt(totalAll)} ₪
+        </span>
+        <span style={{ fontWeight: 400, marginRight: 16, color: "#64748b", fontSize: "0.82rem" }}>
+          حيوانات: {fmt(totalAnimals)} ₪ · أخرى: {fmt(totalCustom)} ₪
+        </span>
       </div>
 
-      {visibleCows.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 8, fontWeight: 600 }}>
-            الأبقار النشطة — إجمالي {fmt(totalCows)} ₪
-          </p>
-          <div className="table-container">
-            <table>
-              <thead><tr><th>رقم البقرة</th><th>تاريخ الإحضار</th><th>ثمن الشراء</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
-              <tbody>
-                {visibleCows.map((c) => (
-                  <tr key={c.id} style={c.is_hidden_asset ? { opacity: 0.45, background: "#f8fafc" } : {}}>
-                    <td data-label="رقم البقرة"><strong>{c.number}</strong></td>
-                    <td data-label="تاريخ الإحضار">{fmtDate(c.arrival_date)}</td>
-                    <td data-label="ثمن الشراء">{fmt(c.purchase_price)} ₪</td>
-                    <td data-label="ملاحظات">{c.notes || "—"}</td>
-                    <td data-label="الإجراءات">
-                      <HideBtn hidden={c.is_hidden_asset} onToggle={() => onToggleHideCow(c.id)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Sub tabs */}
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        <button className={`tab ${subTab === "animals" ? "active" : ""}`} onClick={() => setSubTab("animals")}>
+          حيوانات ({fmt(totalAnimals)} ₪)
+        </button>
+        <button className={`tab ${subTab === "custom" ? "active" : ""}`} onClick={() => setSubTab("custom")}>
+          موجودات أخرى ({fmt(totalCustom)} ₪)
+        </button>
+      </div>
 
-      {visibleCalves.length > 0 && (
+      {/* Animals sub-tab */}
+      {subTab === "animals" && (
         <div>
-          <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 8, fontWeight: 600 }}>
-            العجول النشطة — إجمالي {fmt(totalCalves)} ₪
-          </p>
-          <div className="table-container">
-            <table>
-              <thead><tr><th>رقم العجل</th><th>المصدر</th><th>تاريخ الميلاد / الإحضار</th><th>ثمن الشراء</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
-              <tbody>
-                {visibleCalves.map((c) => (
-                  <tr key={c.id} style={c.is_hidden_asset ? { opacity: 0.45, background: "#f8fafc" } : {}}>
-                    <td data-label="رقم العجل"><strong>{c.number || "—"}</strong></td>
-                    <td data-label="المصدر">
-                      <span className={`badge ${c.origin === "born" ? "badge-born" : "badge-purchased"}`}>
-                        {c.origin === "born" ? "مواليد" : "مشتراة"}
-                      </span>
-                    </td>
-                    <td data-label="التاريخ">{fmtDate(c.birth_date || c.arrival_date)}</td>
-                    <td data-label="ثمن الشراء">{fmt(c.purchase_price)} ₪</td>
-                    <td data-label="ملاحظات">{c.notes || "—"}</td>
-                    <td data-label="الإجراءات">
-                      <HideBtn hidden={c.is_hidden_asset} onToggle={() => onToggleHideCalve(c.id)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            {hiddenCount > 0 && (
+              <button className="btn btn-ghost" style={{ padding: "7px 14px", fontSize: "0.82rem" }}
+                onClick={() => setShowHidden((v) => !v)}>
+                {showHidden ? "إخفاء المخفية" : `عرض المخفية (${hiddenCount})`}
+              </button>
+            )}
           </div>
+
+          {visibleCows.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 8, fontWeight: 600 }}>
+                الأبقار النشطة — إجمالي {fmt(totalCows)} ₪
+              </p>
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>رقم البقرة</th><th>تاريخ الإحضار</th><th>ثمن الشراء</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
+                  <tbody>
+                    {visibleCows.map((c) => (
+                      <tr key={c.id} style={c.is_hidden_asset ? { opacity: 0.45, background: "#f8fafc" } : {}}>
+                        <td data-label="رقم البقرة"><strong>{c.number}</strong></td>
+                        <td data-label="تاريخ الإحضار">{fmtDate(c.arrival_date)}</td>
+                        <td data-label="ثمن الشراء">{fmt(c.purchase_price)} ₪</td>
+                        <td data-label="ملاحظات">{c.notes || "—"}</td>
+                        <td data-label="الإجراءات">
+                          <HideBtn hidden={c.is_hidden_asset} onToggle={() => onToggleHideCow(c.id)} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {visibleCalves.length > 0 && (
+            <div>
+              <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 8, fontWeight: 600 }}>
+                العجول النشطة — إجمالي {fmt(totalCalves)} ₪
+              </p>
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>رقم العجل</th><th>المصدر</th><th>التاريخ</th><th>ثمن الشراء</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
+                  <tbody>
+                    {visibleCalves.map((c) => (
+                      <tr key={c.id} style={c.is_hidden_asset ? { opacity: 0.45, background: "#f8fafc" } : {}}>
+                        <td data-label="رقم العجل"><strong>{c.number || "—"}</strong></td>
+                        <td data-label="المصدر">
+                          <span className={`badge ${c.origin === "born" ? "badge-born" : "badge-purchased"}`}>
+                            {c.origin === "born" ? "مواليد" : "مشتراة"}
+                          </span>
+                        </td>
+                        <td data-label="التاريخ">{fmtDate(c.birth_date || c.arrival_date)}</td>
+                        <td data-label="ثمن الشراء">{fmt(c.purchase_price)} ₪</td>
+                        <td data-label="ملاحظات">{c.notes || "—"}</td>
+                        <td data-label="الإجراءات">
+                          <HideBtn hidden={c.is_hidden_asset} onToggle={() => onToggleHideCalve(c.id)} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {visibleCows.length === 0 && visibleCalves.length === 0 && (
+            <div className="empty-state" style={{ padding: "48px 20px" }}><p>لا توجد موجودات حيوانية حالياً</p></div>
+          )}
         </div>
       )}
 
-      {visibleCows.length === 0 && visibleCalves.length === 0 && (
-        <div className="empty-state" style={{ padding: "48px 20px" }}><p>لا توجد موجودات حيوانية حالياً</p></div>
+      {/* Custom assets sub-tab */}
+      {subTab === "custom" && (
+        <div>
+          <div className="section-header" style={{ marginBottom: 12 }}>
+            <h2 style={{ fontSize: "1rem" }}>موجودات أخرى</h2>
+            <div className="section-header-right">
+              <span style={{ fontSize: "0.85rem", color: "#555" }}>
+                الإجمالي: <strong style={{ color: "#1d4ed8" }}>{fmt(totalCustom)} ₪</strong>
+              </span>
+              <button className="btn btn-primary" onClick={onAddCustom} style={{ padding: "7px 14px", fontSize: "0.82rem" }}>
+                + إضافة
+              </button>
+            </div>
+          </div>
+          <div className="table-container">
+            {custom.length === 0 ? (
+              <div className="empty-state" style={{ padding: "28px 20px" }}><p>لا توجد موجودات مضافة بعد</p></div>
+            ) : (
+              <table>
+                <thead><tr><th>الاسم</th><th>القيمة</th><th>ملاحظات</th><th>الإجراءات</th></tr></thead>
+                <tbody>
+                  {custom.map((c) => (
+                    <tr key={c.id}>
+                      <td data-label="الاسم"><strong>{c.name}</strong></td>
+                      <td data-label="القيمة">{fmt(c.value)} ₪</td>
+                      <td data-label="ملاحظات">{c.notes || "—"}</td>
+                      <td data-label="الإجراءات" style={{ whiteSpace: "nowrap" }}>
+                        <button className="action-btn btn-edit" onClick={() => onEditCustom(c)}>تعديل</button>
+                        <button className="action-btn btn-delete" onClick={() => onDeleteCustom(c.id)}>حذف</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -578,6 +634,23 @@ export default function Finances() {
     axios.delete(`${API}/${ep}/${id}`).then(load).catch(showErr);
   };
 
+  const openCustomAsset = (row = null) => {
+    setEditId(row?.id || null);
+    setForm(row ? { name: row.name, value: row.value, notes: row.notes || "" } : { name: "", value: "", notes: "" });
+    setModal("custom_asset");
+  };
+  const handleDeleteCustom = (id) => {
+    if (!confirm("هل تريد حذف هذا الموجود؟")) return;
+    axios.delete(`${API}/custom-assets/${id}`).then(load).catch(showErr);
+  };
+  const handleSubmitCustom = (e) => {
+    e.preventDefault();
+    const req = editId
+      ? axios.put(`${API}/custom-assets/${editId}`, form)
+      : axios.post(`${API}/custom-assets`, form);
+    req.then(() => { setModal(null); load(); }).catch(showErr);
+  };
+
   const handleToggleHide = (id) => {
     axios.patch(`${API}/revenues/${id}/hide`).then(load);
   };
@@ -603,7 +676,8 @@ export default function Finances() {
   const totalSalaries = salaries.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalLosses   = losses.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalCapital  = capital.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const totalAssets   = [...assets.cows, ...assets.calves].reduce((s, c) => s + Number(c.purchase_price || 0), 0);
+  const totalAssets   = [...(assets.cows || []), ...(assets.calves || [])].reduce((s, c) => s + Number(c.purchase_price || 0), 0)
+                      + (assets.custom || []).reduce((s, c) => s + Number(c.value || 0), 0);
 
   return (
     <div>
@@ -665,8 +739,12 @@ export default function Finances() {
         <AssetsTab
           cows={assets.cows}
           calves={assets.calves}
+          custom={assets.custom || []}
           onToggleHideCow={handleToggleHideCow}
           onToggleHideCalve={handleToggleHideCalve}
+          onAddCustom={() => openCustomAsset()}
+          onEditCustom={(c) => openCustomAsset(c)}
+          onDeleteCustom={handleDeleteCustom}
         />
       )}
 
@@ -817,6 +895,30 @@ export default function Finances() {
                 <label>التاريخ *</label>
                 <input required type="date" value={form.date} onChange={set("date")} />
               </div>
+            </div>
+            <div className="form-group">
+              <label>ملاحظات</label>
+              <textarea rows={2} value={form.notes} onChange={set("notes")} />
+            </div>
+            <div className="form-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>إلغاء</button>
+              <button type="submit" className="btn btn-primary">{editId ? "حفظ" : "إضافة"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Custom Asset Modal */}
+      {modal === "custom_asset" && (
+        <Modal title={editId ? "تعديل موجود" : "إضافة موجود"} onClose={() => setModal(null)}>
+          <form onSubmit={handleSubmitCustom}>
+            <div className="form-group">
+              <label>الاسم *</label>
+              <input required value={form.name} onChange={set("name")} placeholder="مثال: تراكتور، أرض، معدات..." autoFocus />
+            </div>
+            <div className="form-group">
+              <label>القيمة (₪) *</label>
+              <input required type="number" min="0" step="0.01" value={form.value} onChange={set("value")} placeholder="0.00" />
             </div>
             <div className="form-group">
               <label>ملاحظات</label>
