@@ -14,7 +14,7 @@ export default function Navbar({ isOpen, onClose, notifCount = 0 }) {
   return (
     <nav className={`navbar${isOpen ? " open" : ""}`}>
       <div className="navbar-logo">
-        <h2>مزرعة</h2>
+        <h2>مزرعة النقاء</h2>
         <p>نظام إدارة المزرعة</p>
       </div>
 

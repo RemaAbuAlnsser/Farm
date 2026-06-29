@@ -731,6 +731,146 @@ app.delete("/api/capital/:id", (req, res) => {
   });
 });
 
+// ─── Feed Inventory ───────────────────────────────────────────────────────────
+
+const FEED_UNIT  = { cow_feed: "بالة", calf_feed: "شوال", calf_straw: "بالة" };
+const FEED_LABEL = { cow_feed: "علف بقر", calf_feed: "علف عجول", calf_straw: "قش عجول" };
+
+app.get("/api/feed/all", (req, res) => {
+  const types = ["cow_feed", "calf_feed", "calf_straw"];
+  const result = { stock: {}, history: {} };
+  types.forEach(t => {
+    result.stock[t]   = { total_purchased: 0, total_used: 0, current_price: 0, weight_per_unit: null, weight_unit: "kg" };
+    result.history[t] = { purchases: [], usages: [] };
+  });
+
+  let pending = types.length * 5;
+  const fail = (err) => res.status(500).json({ error: dbErr(err) });
+  const done = () => { if (--pending === 0) res.json(result); };
+
+  types.forEach(type => {
+    db.query("SELECT COALESCE(SUM(quantity),0) AS t FROM feed_inventory WHERE feed_type=?", [type], (err, r) => {
+      if (err) return fail(err);
+      result.stock[type].total_purchased = parseInt(r[0].t);
+      done();
+    });
+    db.query("SELECT COALESCE(SUM(quantity),0) AS t FROM feed_usage WHERE feed_type=?", [type], (err, r) => {
+      if (err) return fail(err);
+      result.stock[type].total_used = parseInt(r[0].t);
+      done();
+    });
+    db.query("SELECT price_per_unit, weight_per_unit, weight_unit FROM feed_inventory WHERE feed_type=? ORDER BY created_at DESC LIMIT 1", [type], (err, r) => {
+      if (err) return fail(err);
+      if (r.length) {
+        result.stock[type].current_price   = parseFloat(r[0].price_per_unit);
+        result.stock[type].weight_per_unit = r[0].weight_per_unit ? parseFloat(r[0].weight_per_unit) : null;
+        result.stock[type].weight_unit     = r[0].weight_unit || "kg";
+      }
+      done();
+    });
+    db.query(
+      `SELECT fi.*, GREATEST(0, fi.quantity - COALESCE((SELECT SUM(fu.quantity) FROM feed_usage fu WHERE fu.inventory_id = fi.id), 0)) AS remaining_in_batch
+       FROM feed_inventory fi WHERE fi.feed_type=? ORDER BY fi.date DESC, fi.created_at DESC`,
+      [type], (err, rows) => {
+        if (err) return fail(err);
+        result.history[type].purchases = rows;
+        done();
+      }
+    );
+    db.query("SELECT * FROM feed_usage WHERE feed_type=? ORDER BY date DESC, created_at DESC", [type], (err, rows) => {
+      if (err) return fail(err);
+      result.history[type].usages = rows;
+      done();
+    });
+  });
+});
+
+app.post("/api/feed/inventory", (req, res) => {
+  const { feed_type, quantity, price_per_unit, weight_per_unit, weight_unit, date, notes } = req.body;
+  db.query(
+    "INSERT INTO feed_inventory (feed_type, quantity, price_per_unit, weight_per_unit, weight_unit, date, notes) VALUES (?,?,?,?,?,?,?)",
+    [feed_type, parseInt(quantity), parseFloat(price_per_unit), weight_per_unit || null, weight_unit || "kg", date, notes || null],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      res.json({ id: result.insertId, message: "تم إضافة المخزون" });
+    }
+  );
+});
+
+function createUsage(feed_type, qty, period_type, date, notes, price, inventory_id, req, res) {
+  const amount      = qty * price;
+  const periodLabel = period_type === "weekly" ? "أسبوعي" : "يومي";
+  const expNotes    = `${FEED_LABEL[feed_type]} — ${qty} ${FEED_UNIT[feed_type]} (${periodLabel})`;
+  db.query("INSERT INTO expenses (category, amount, date, notes) VALUES (?,?,?,?)",
+    [feed_type, amount, date, expNotes],
+    (err, expRes) => {
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      db.query(
+        "INSERT INTO feed_usage (feed_type, quantity, period_type, date, amount, expense_id, inventory_id, notes) VALUES (?,?,?,?,?,?,?,?)",
+        [feed_type, qty, period_type || "daily", date, amount, expRes.insertId, inventory_id || null, notes || null],
+        (err3) => {
+          if (err3) return res.status(500).json({ error: dbErr(err3) });
+          logTx("expense", null, null, amount, date, expNotes, req.user?.name);
+          res.json({ message: "تم تسجيل الاستهلاك وإضافته للمصروفات" });
+        }
+      );
+    }
+  );
+}
+
+app.post("/api/feed/use", (req, res) => {
+  const { feed_type, quantity, period_type, date, notes, inventory_id } = req.body;
+  const qty = parseInt(quantity);
+
+  if (inventory_id) {
+    db.query(
+      `SELECT price_per_unit, GREATEST(0, quantity - COALESCE((SELECT SUM(fu.quantity) FROM feed_usage fu WHERE fu.inventory_id = ?), 0)) AS remaining FROM feed_inventory WHERE id = ?`,
+      [inventory_id, inventory_id],
+      (err, r) => {
+        if (err) return res.status(500).json({ error: dbErr(err) });
+        if (!r.length) return res.status(400).json({ error: "الدفعة غير موجودة" });
+        const remaining = parseInt(r[0].remaining);
+        const price     = parseFloat(r[0].price_per_unit);
+        if (remaining <= 0)  return res.status(400).json({ error: "هذه الدفعة مستهلكة بالكامل" });
+        if (qty > remaining) return res.status(400).json({ error: `الكمية (${qty}) تتجاوز الباقي في هذه الدفعة (${remaining})` });
+        createUsage(feed_type, qty, period_type, date, notes, price, parseInt(inventory_id), req, res);
+      }
+    );
+  } else {
+    const checkSql = `SELECT
+      (SELECT COALESCE(SUM(quantity),0) FROM feed_inventory WHERE feed_type=?) -
+      (SELECT COALESCE(SUM(quantity),0) FROM feed_usage    WHERE feed_type=?) AS remaining,
+      (SELECT price_per_unit FROM feed_inventory WHERE feed_type=? ORDER BY created_at DESC LIMIT 1) AS price`;
+    db.query(checkSql, [feed_type, feed_type, feed_type], (err, r) => {
+      if (err) return res.status(500).json({ error: dbErr(err) });
+      const remaining = parseInt(r[0].remaining || 0);
+      const price     = parseFloat(r[0].price || 0);
+      if (remaining <= 0)  return res.status(400).json({ error: "لا يوجد مخزون متبقٍ" });
+      if (qty > remaining) return res.status(400).json({ error: `الكمية (${qty}) تتجاوز المخزون المتبقي (${remaining})` });
+      createUsage(feed_type, qty, period_type, date, notes, price, null, req, res);
+    });
+  }
+});
+
+app.delete("/api/feed/inventory/:id", (req, res) => {
+  db.query("DELETE FROM feed_inventory WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: dbErr(err) });
+    res.json({ message: "تم الحذف" });
+  });
+});
+
+app.delete("/api/feed/usage/:id", (req, res) => {
+  db.query("SELECT expense_id FROM feed_usage WHERE id=?", [req.params.id], (err, rows) => {
+    if (err) return res.status(500).json({ error: dbErr(err) });
+    const expId = rows[0]?.expense_id;
+    db.query("DELETE FROM feed_usage WHERE id=?", [req.params.id], (err2) => {
+      if (err2) return res.status(500).json({ error: dbErr(err2) });
+      if (expId) db.query("DELETE FROM expenses WHERE id=?", [expId], () => {});
+      res.json({ message: "تم الحذف" });
+    });
+  });
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = 3001;

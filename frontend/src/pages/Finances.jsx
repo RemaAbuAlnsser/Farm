@@ -51,7 +51,7 @@ function SummaryCards({ revenues, expenses, salaries, losses, capital, assets })
   return (
     <div className="cards-row" style={{ marginBottom: 24 }}>
       <div className="card">
-        <div className="card-label">الموجودات (قيمة الحيوانات)</div>
+        <div className="card-label">الموجودات </div>
         <div className="card-value blue">{fmt(assets)} ₪</div>
       </div>
       <div className="card">
@@ -532,6 +532,134 @@ function AssetsTab({ cows, calves, custom, onToggleHideCow, onToggleHideCalve, o
   );
 }
 
+// ── Feed Inventory tab ────────────────────────────────────────────────────────
+
+const FEED_CONFIG = {
+  cow_feed:   { label: "علف البقر",  unit: "بالة",  fixedWeight: null },
+  calf_feed:  { label: "علف العجول", unit: "شوال", fixedWeight: 50 },
+  calf_straw: { label: "قش عجول",   unit: "بالة",  fixedWeight: null },
+};
+
+function FeedTab({ stock, history, onBuy, onUse, onDeletePurchase, onDeleteUsage }) {
+  const [sub, setSub] = useState("cow_feed");
+  const cfg = FEED_CONFIG[sub];
+  const st  = stock[sub]   || { total_purchased: 0, total_used: 0, current_price: 0, weight_per_unit: null, weight_unit: "kg" };
+  const hist = history[sub] || { purchases: [], usages: [] };
+  const remaining      = Math.max(0, (st.total_purchased || 0) - (st.total_used || 0));
+  const remainingValue = remaining * (st.current_price || 0);
+
+  const weightLabel = (units) => {
+    if (!units) return null;
+    if (cfg.fixedWeight) return `${(units * cfg.fixedWeight).toLocaleString()} كيلو`;
+    if (st.weight_per_unit) return `${(units * st.weight_per_unit).toLocaleString()} ${st.weight_unit === "ton" ? "طن" : "كيلو"}`;
+    return null;
+  };
+
+  return (
+    <div>
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        {Object.entries(FEED_CONFIG).map(([type, c]) => {
+          const s = stock[type] || {};
+          const r = Math.max(0, (s.total_purchased || 0) - (s.total_used || 0));
+          return (
+            <button key={type} className={`tab ${sub === type ? "active" : ""}`} onClick={() => setSub(type)}>
+              {c.label} ({r} {c.unit})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 140, padding: "14px 18px", background: remaining > 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 10, border: `1px solid ${remaining > 0 ? "#bbf7d0" : "#fecaca"}` }}>
+          <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: 4 }}>المخزون الباقي</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 800, color: remaining > 0 ? "#15803d" : "#dc2626" }}>
+            {remaining} <span style={{ fontSize: "0.85rem" }}>{cfg.unit}</span>
+          </div>
+          {weightLabel(remaining) && (
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 2 }}>{weightLabel(remaining)}</div>
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 140, padding: "14px 18px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: 4 }}>القيمة المتبقية</div>
+          <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#1d4ed8" }}>{fmt(remainingValue)} ₪</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 140, padding: "14px 18px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: 4 }}>السعر الحالي</div>
+          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#374151" }}>
+            {fmt(st.current_price || 0)} ₪ / {cfg.unit}
+          </div>
+        </div>
+      </div>
+
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+        <button className="btn btn-primary" style={{ padding: "9px 18px" }} onClick={() => onBuy(sub)}>
+          + شراء {cfg.unit}
+        </button>
+        {remaining > 0 && (
+          <button
+            style={{ padding: "9px 18px", background: "#f97316", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: "0.9rem" }}
+            onClick={() => onUse(sub)}
+          >
+            تسجيل استهلاك
+          </button>
+        )}
+      </div>
+
+      {/* History */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <div>
+          <p style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: 8 }}>سجل المشتريات</p>
+          <div className="table-container">
+            {hist.purchases.length === 0 ? (
+              <div className="empty-state" style={{ padding: "20px" }}><p>لا يوجد مشتريات</p></div>
+            ) : (
+              <table>
+                <thead><tr><th>الكمية</th><th>السعر</th><th>التاريخ</th><th></th></tr></thead>
+                <tbody>
+                  {hist.purchases.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.quantity} {cfg.unit}{weightLabel(p.quantity) ? <span style={{ fontSize: "0.75rem", color: "#94a3b8", marginRight: 4 }}>({weightLabel(p.quantity)})</span> : null}</td>
+                      <td>{fmt(p.price_per_unit)} ₪</td>
+                      <td>{fmtDate(p.date)}</td>
+                      <td><button className="action-btn btn-delete" onClick={() => onDeletePurchase(p.id)}>حذف</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <p style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: 8 }}>سجل الاستهلاك</p>
+          <div className="table-container">
+            {hist.usages.length === 0 ? (
+              <div className="empty-state" style={{ padding: "20px" }}><p>لا يوجد استهلاك</p></div>
+            ) : (
+              <table>
+                <thead><tr><th>الكمية</th><th>الفترة</th><th>المبلغ</th><th>التاريخ</th><th></th></tr></thead>
+                <tbody>
+                  {hist.usages.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.quantity} {cfg.unit}</td>
+                      <td><span style={{ fontSize: "0.78rem", background: "#f1f5f9", padding: "2px 8px", borderRadius: 6 }}>{u.period_type === "weekly" ? "أسبوعي" : "يومي"}</span></td>
+                      <td style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(u.amount)} ₪</td>
+                      <td>{fmtDate(u.date)}</td>
+                      <td><button className="action-btn btn-delete" onClick={() => onDeleteUsage(u.id)}>حذف</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Capital tab ───────────────────────────────────────────────────────────────
 
 function CapitalTab({ items, onAdd, onEdit, onDelete }) {
@@ -589,11 +717,18 @@ export default function Finances() {
   const [losses, setLosses]     = useState([]);
   const [capital, setCapital]   = useState([]);
   const [assets, setAssets]     = useState({ cows: [], calves: [] });
+  const [feedStock, setFeedStock]     = useState({ cow_feed: {}, calf_feed: {}, calf_straw: {} });
+  const [feedHistory, setFeedHistory] = useState({ cow_feed: { purchases: [], usages: [] }, calf_feed: { purchases: [], usages: [] }, calf_straw: { purchases: [], usages: [] } });
+  const [feedModal, setFeedModal]     = useState(null);
+  const [feedForm, setFeedForm]       = useState({});
+  const [activeFeed, setActiveFeed]   = useState(null);
   const [modal, setModal]       = useState(null);
   const [form, setForm]         = useState({});
   const [editId, setEditId]     = useState(null);
   const [fixedCat, setFixedCat] = useState(false);
   const [errMsg, setErrMsg]     = useState(null);
+  const [monthFilter, setMonthFilter] = useState(today().slice(0, 7));
+  const [showAll, setShowAll]         = useState(false);
 
   const showErr = (e) => {
     const msg = e?.response?.data?.error || "حدث خطأ، حاول مجدداً";
@@ -608,7 +743,42 @@ export default function Finances() {
     axios.get(`${API}/losses`).then((r) => setLosses(r.data));
     axios.get(`${API}/capital`).then((r) => setCapital(r.data));
     axios.get(`${API}/assets`).then((r) => setAssets(r.data));
+    axios.get(`${API}/feed/all`).then((r) => { setFeedStock(r.data.stock); setFeedHistory(r.data.history); });
   };
+
+  const openFeedBuy = (type) => {
+    setActiveFeed(type);
+    setFeedForm({ quantity: "", price_per_unit: "", weight_per_unit: "", weight_unit: "kg", date: today(), notes: "" });
+    setFeedModal("buy");
+  };
+  const openFeedUse = (type) => {
+    setActiveFeed(type);
+    const purchases = feedHistory[type]?.purchases || [];
+    const batches = purchases.filter(p => parseInt(p.remaining_in_batch) > 0);
+    const autoId = batches.length === 1 ? String(batches[0].id) : "";
+    setFeedForm({ quantity: "1", period_type: "daily", date: today(), notes: "", inventory_id: autoId, batches });
+    setFeedModal("use");
+  };
+  const handleFeedBuy = (e) => {
+    e.preventDefault();
+    axios.post(`${API}/feed/inventory`, { feed_type: activeFeed, ...feedForm })
+      .then(() => { setFeedModal(null); load(); }).catch(showErr);
+  };
+  const handleFeedUse = (e) => {
+    e.preventDefault();
+    const { quantity, period_type, date, notes, inventory_id } = feedForm;
+    axios.post(`${API}/feed/use`, { feed_type: activeFeed, quantity, period_type, date, notes, inventory_id })
+      .then(() => { setFeedModal(null); load(); }).catch(showErr);
+  };
+  const handleDeleteFeedPurchase = (id) => {
+    if (!confirm("هل تريد حذف هذا الشراء؟")) return;
+    axios.delete(`${API}/feed/inventory/${id}`).then(load).catch(showErr);
+  };
+  const handleDeleteFeedUsage = (id) => {
+    if (!confirm("هل تريد حذف هذا السجل؟ سيتم حذف المصروف المرتبط به أيضاً")) return;
+    axios.delete(`${API}/feed/usage/${id}`).then(load).catch(showErr);
+  };
+  const setFeed = (k) => (e) => setFeedForm((f) => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => { load(); }, []);
 
@@ -671,19 +841,59 @@ export default function Finances() {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const totalRevenues = revenues.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const totalExpenses = expenses.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const totalSalaries = salaries.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const totalLosses   = losses.reduce((s, i) => s + Number(i.amount || 0), 0);
+  const inMonth = (d) => {
+    if (showAll || !monthFilter) return true;
+    const date = (d || "").split("T")[0];
+    return date.startsWith(monthFilter);
+  };
+
+  const totalRevenues = revenues.filter((i) => !i.is_hidden && inMonth(i.date)).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalExpenses = expenses.filter((i) => !i.is_hidden && inMonth(i.date)).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalSalaries = salaries.filter((i) => !i.is_hidden && inMonth(i.date)).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalLosses   = losses.filter((i)   => !i.is_hidden && inMonth(i.date)).reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalCapital  = capital.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalAssets   = [...(assets.cows || []), ...(assets.calves || [])].reduce((s, c) => s + Number(c.purchase_price || 0), 0)
                       + (assets.custom || []).reduce((s, c) => s + Number(c.value || 0), 0);
+
+  const MONTH_NAMES = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const fmtMonth = (m) => { const [y, mo] = m.split("-"); return `${MONTH_NAMES[parseInt(mo)-1]} ${y}`; };
+  const monthLabel = monthFilter ? fmtMonth(monthFilter) : "";
+
+  const availableMonths = (() => {
+    const months = new Set([today().slice(0, 7)]);
+    [...revenues, ...expenses, ...salaries, ...losses].forEach((i) => {
+      const d = (i.date || "").split("T")[0];
+      if (d) months.add(d.slice(0, 7));
+    });
+    return [...months].sort().reverse();
+  })();
 
   return (
     <div>
       {errMsg && <div className="error-toast">{errMsg}</div>}
       <div className="page-header">
         <h1>المبيعات والمصاريف</h1>
+      </div>
+
+      {/* Month filter */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#374151" }}>الفترة:</span>
+        <select
+          value={showAll ? "" : monthFilter}
+          onChange={(e) => {
+            if (e.target.value === "") { setShowAll(true); }
+            else { setMonthFilter(e.target.value); setShowAll(false); }
+          }}
+          style={{ padding: "7px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontFamily: "inherit", fontSize: "0.88rem", outline: "none", background: "#fff", cursor: "pointer" }}
+        >
+          <option value="">الكل</option>
+          {availableMonths.map((m) => (
+            <option key={m} value={m}>{fmtMonth(m)}</option>
+          ))}
+        </select>
+        {!showAll && monthLabel && (
+          <span style={{ fontSize: "0.8rem", color: "#64748b" }}>— أرقام {monthLabel}</span>
+        )}
       </div>
 
       <SummaryCards
@@ -696,7 +906,7 @@ export default function Finances() {
       />
 
       <div className="tabs">
-        {[["revenues","مبيعات"],["expenses","المصروفات"],["losses","الخسائر"],["assets","الموجودات"],["capital","رأس المال"]].map(([v, l]) => (
+        {[["revenues","مبيعات"],["expenses","المصروفات"],["losses","الخسائر"],["assets","الموجودات"],["capital","رأس المال"],["feed","المخزون"]].map(([v, l]) => (
           <button key={v} className={`tab ${tab === v ? "active" : ""}`} onClick={() => setTab(v)}>{l}</button>
         ))}
       </div>
@@ -756,6 +966,139 @@ export default function Finances() {
           onDelete={(id) => handleDelete("capital", id)}
         />
       )}
+
+      {tab === "feed" && (
+        <FeedTab
+          stock={feedStock}
+          history={feedHistory}
+          onBuy={openFeedBuy}
+          onUse={openFeedUse}
+          onDeletePurchase={handleDeleteFeedPurchase}
+          onDeleteUsage={handleDeleteFeedUsage}
+        />
+      )}
+
+      {/* Feed Buy Modal */}
+      {feedModal === "buy" && activeFeed && (
+        <Modal title={`شراء ${FEED_CONFIG[activeFeed]?.label}`} onClose={() => setFeedModal(null)}>
+          <form onSubmit={handleFeedBuy}>
+            <div className="form-row">
+              <div className="form-group">
+                <label>العدد ({FEED_CONFIG[activeFeed]?.unit}) *</label>
+                <input required type="number" min="1" value={feedForm.quantity} onChange={setFeed("quantity")} placeholder="0" autoFocus />
+              </div>
+              <div className="form-group">
+                <label>السعر للـ{FEED_CONFIG[activeFeed]?.unit} (₪) *</label>
+                <input required type="number" min="0" step="0.01" value={feedForm.price_per_unit} onChange={setFeed("price_per_unit")} placeholder="0.00" />
+              </div>
+            </div>
+            {FEED_CONFIG[activeFeed]?.fixedWeight === null && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>وزن الـ{FEED_CONFIG[activeFeed]?.unit}</label>
+                  <input type="number" min="0" step="0.01" value={feedForm.weight_per_unit} onChange={setFeed("weight_per_unit")} placeholder="الوزن (اختياري)" />
+                </div>
+                <div className="form-group">
+                  <label>وحدة الوزن</label>
+                  <select value={feedForm.weight_unit} onChange={setFeed("weight_unit")}>
+                    <option value="kg">كيلو</option>
+                    <option value="ton">طن</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            <div className="form-group">
+              <label>التاريخ *</label>
+              <input required type="date" value={feedForm.date} onChange={setFeed("date")} />
+            </div>
+            <div className="form-group">
+              <label>ملاحظات</label>
+              <textarea rows={2} value={feedForm.notes} onChange={setFeed("notes")} />
+            </div>
+            {feedForm.quantity && feedForm.price_per_unit && (
+              <div style={{ padding: "10px 14px", background: "#f0fdf4", borderRadius: 8, marginBottom: 12, fontSize: "0.85rem", color: "#15803d", fontWeight: 600 }}>
+                الإجمالي: {fmt(feedForm.quantity * feedForm.price_per_unit)} ₪
+              </div>
+            )}
+            <div className="form-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => setFeedModal(null)}>إلغاء</button>
+              <button type="submit" className="btn btn-primary">إضافة المخزون</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Feed Use Modal */}
+      {feedModal === "use" && activeFeed && (() => {
+        const cfg = FEED_CONFIG[activeFeed];
+        const availBatches = feedForm.batches || [];
+        const selBatch = availBatches.find(b => String(b.id) === String(feedForm.inventory_id));
+        const batchRem = selBatch ? parseInt(selBatch.remaining_in_batch) : 0;
+        const batchPrice = selBatch ? parseFloat(selBatch.price_per_unit) : 0;
+        const showFields = availBatches.length === 1 || !!feedForm.inventory_id;
+        return (
+          <Modal title={`تسجيل استهلاك ${cfg?.label}`} onClose={() => setFeedModal(null)}>
+            <form onSubmit={handleFeedUse}>
+              {availBatches.length === 0 ? (
+                <p style={{ color: "#dc2626", marginBottom: 12 }}>لا توجد دفعات متاحة في المخزون</p>
+              ) : availBatches.length > 1 ? (
+                <div className="form-group">
+                  <label>اختر الدفعة *</label>
+                  <select required value={feedForm.inventory_id} onChange={setFeed("inventory_id")}>
+                    <option value="">— اختر دفعة —</option>
+                    {availBatches.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {fmtDate(b.date)} — متبقي {b.remaining_in_batch} {cfg.unit} — {fmt(b.price_per_unit)} ₪/{cfg.unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p style={{ marginBottom: 12, color: "#555", fontSize: "0.88rem", background: "#f0fdf4", padding: "8px 12px", borderRadius: 8 }}>
+                  الدفعة: {fmtDate(selBatch?.date)} — متبقي <strong>{batchRem} {cfg.unit}</strong> — {fmt(batchPrice)} ₪/{cfg.unit}
+                </p>
+              )}
+              {showFields && (
+                <>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>العدد ({cfg.unit}) *</label>
+                      <input required type="number" min="1" max={batchRem || undefined} value={feedForm.quantity} onChange={setFeed("quantity")} placeholder="0" autoFocus />
+                    </div>
+                    <div className="form-group">
+                      <label>الفترة</label>
+                      <select value={feedForm.period_type} onChange={setFeed("period_type")}>
+                        <option value="daily">يومي</option>
+                        <option value="weekly">أسبوعي</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>التاريخ *</label>
+                    <input required type="date" value={feedForm.date} onChange={setFeed("date")} />
+                  </div>
+                  <div className="form-group">
+                    <label>ملاحظات</label>
+                    <textarea rows={2} value={feedForm.notes} onChange={setFeed("notes")} />
+                  </div>
+                  {feedForm.quantity && batchPrice > 0 && (
+                    <div style={{ padding: "10px 14px", background: "#fff7ed", borderRadius: 8, marginBottom: 12, fontSize: "0.85rem", color: "#c2410c", fontWeight: 600 }}>
+                      المصروف المسجل: {fmt(feedForm.quantity * batchPrice)} ₪
+                      <span style={{ color: "#94a3b8", marginRight: 8, fontSize: "0.78rem", fontWeight: 400 }}>
+                        ({feedForm.quantity} × {fmt(batchPrice)} ₪)
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="form-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setFeedModal(null)}>إلغاء</button>
+                {availBatches.length > 0 && <button type="submit" className="btn btn-primary">تسجيل الاستهلاك</button>}
+              </div>
+            </form>
+          </Modal>
+        );
+      })()}
 
       {/* Revenue Modal (milk only) */}
       {modal === "revenue" && (

@@ -60,7 +60,7 @@ export default function Login({ onLogin }) {
             م
           </div>
           <h1 style={{ fontSize: "1.35rem", color: "#0f172a", fontWeight: 800, marginBottom: 4 }}>
-            نظام إدارة المزرعة
+            مزرعة النقاء
           </h1>
           <p style={{ color: "#94a3b8", fontSize: "0.83rem" }}>سجّل دخولك للمتابعة</p>
         </div>
