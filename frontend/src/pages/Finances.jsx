@@ -608,7 +608,7 @@ function FeedTab({ stock, history, onBuy, onUse, onDeletePurchase, onDeleteUsage
       </div>
 
       {/* History */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div className="feed-history-grid">
         <div>
           <p style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: 8 }}>سجل المشتريات</p>
           <div className="table-container">

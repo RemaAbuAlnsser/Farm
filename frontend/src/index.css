@@ -10,7 +10,10 @@ body {
   background: #f8fafc;
   color: #0f172a;
   min-height: 100vh;
+  overflow-x: hidden;
 }
+
+html { overflow-x: hidden; }
 
 a {
   text-decoration: none;
@@ -629,13 +632,13 @@ tr:hover td {
   .navbar.open { transform: translateX(0); }
 
   /* ─ Main content ─ */
-  .main-content { margin-right: 0; padding: 68px 12px 32px; }
+  .main-content { margin-right: 0; padding: 68px 12px 32px; min-width: 0; max-width: 100vw; overflow-x: hidden; }
 
   /* ─ Cards: 2 cols, smaller text ─ */
-  .cards-row { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-  .card { padding: 14px 12px; }
-  .card-label { font-size: 0.72rem; }
-  .card-value { font-size: 1.1rem; }
+  .cards-row { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .card { padding: 12px 10px; min-width: 0; overflow: hidden; }
+  .card-label { font-size: 0.7rem; }
+  .card-value { font-size: 0.95rem; word-break: break-all; }
 
   /* ─ Page header ─ */
   .page-header { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
@@ -669,8 +672,9 @@ tr:hover td {
   .form-row { grid-template-columns: 1fr; gap: 0; }
 
   /* ─ Section header wrap (Finances) ─ */
-  .section-header { flex-wrap: wrap; gap: 8px; }
-  .section-header-right { flex-wrap: wrap; gap: 6px; }
+  .section-header { flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .section-header h2 { min-width: 0; flex-shrink: 1; }
+  .section-header-right { flex-wrap: wrap; gap: 6px; min-width: 0; }
   .section-header-right .btn { font-size: 0.8rem; padding: 7px 12px; }
 
   /* ─ Modal: bottom sheet ─ */
@@ -755,11 +759,22 @@ tr:hover td {
   .table-container tr:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 }
 
+/* ─ Feed history: stack on mobile ─ */
+.feed-history-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
 @media (max-width: 400px) {
-  .cards-row { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .card { padding: 12px 10px; }
-  .card-value { font-size: 1rem; }
+  .cards-row { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .card { padding: 10px 8px; }
+  .card-value { font-size: 0.88rem; }
   .main-content { padding: 66px 10px 24px; }
   .login-card { padding: 28px 18px !important; }
   .page-header .btn { width: 100%; justify-content: center; }
+}
+
+@media (max-width: 768px) {
+  .feed-history-grid { grid-template-columns: 1fr; gap: 16px; }
 }
